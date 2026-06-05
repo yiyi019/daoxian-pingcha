@@ -52,13 +52,13 @@ function integerDistribute(target, unit, n, weights) {
  *   - azimuths[i]        = 第 i 条边（站 i 出发）的方位角
  *   - azimuths.length    === n（不含回到起点的最后一条校验边）
  */
-function adjustAnglesAndAzimuths(obsAngles, startAzimuth, angleType, fBeta, integerMode) {
+function adjustAnglesAndAzimuths(obsAngles, startAzimuth, angleType, fBeta, integerMode, isStartPointMatching) {
   const n = obsAngles.length;
   let vArr;
   if (integerMode) {
     vArr = integerDistribute(-fBeta, 1, n, obsAngles.map(a => a.original));
   } else {
-    const v = -fBeta / n;                           // 每角平均改正（秒），允许小数
+    const v = -fBeta / n;
     vArr = new Array(n).fill(v);
   }
   const adjusted = obsAngles.map((a, i) => ({
@@ -68,8 +68,13 @@ function adjustAnglesAndAzimuths(obsAngles, startAzimuth, angleType, fBeta, inte
     adjusted: a.original + vArr[i] / 3600
   }));
 
-  const azimuths = [normalize360(startAzimuth)];
   let cur = startAzimuth;
+  const azimuths = [];
+  
+  if (!isStartPointMatching) {
+    azimuths.push(normalize360(startAzimuth));
+  }
+
   for (let i = 0; i < n; i++) {
     let next;
     if (angleType === 'left') {
@@ -78,9 +83,14 @@ function adjustAnglesAndAzimuths(obsAngles, startAzimuth, angleType, fBeta, inte
       next = cur - adjusted[i].adjusted + 180;
     }
     cur = normalize360(next);
-    if (i < n - 1) azimuths.push(cur);
+    
+    if (isStartPointMatching) {
+      azimuths.push(cur);
+    } else {
+      if (i < n - 1) azimuths.push(cur);
+    }
   }
-  // 推算回到起点应满足的角度闭合（理论上为 0）
+  
   const lastAz = cur;
   return { adjusted, azimuths, lastAz };
 }
@@ -152,7 +162,7 @@ function distributeClosure(incs, fx, fy, sumD, integerMode) {
  * @param {number} [params.kLimit]      全长相对闭合差限差（>0 数字），默认 1/2000
  */
 export function calcClosedTraverse(params) {
-  const { startPoint, startAzimuth, angleType, stations, angleLimit, kLimit, integerMode } = params;
+  const { startPoint, startAzimuth, angleType, stations, angleLimit, kLimit, integerMode, isStartPointMatching } = params;
 
   if (!Array.isArray(stations) || stations.length < 3) {
     throw new Error('闭合导线至少需要 3 个测站');
@@ -173,7 +183,7 @@ export function calcClosedTraverse(params) {
 
   // 2) 改正 + 方位角
   const { adjusted, azimuths, lastAz } = adjustAnglesAndAzimuths(
-    obs, startAzimuth, angleType, fBeta, integerMode
+    obs, startAzimuth, angleType, fBeta, integerMode, isStartPointMatching
   );
   const azClosureErr = (lastAz - startAzimuth) * 3600;      // 应 ≈ 0
 
@@ -195,7 +205,11 @@ export function calcClosedTraverse(params) {
   for (let i = 0; i < n; i++) {
     cx += adjIncs[i].adjustedDx;
     cy += adjIncs[i].adjustedDy;
-    coords.push({ name: stations[i].name, x: cx, y: cy });
+    let nextName = stations[i].name;
+    if (isStartPointMatching) {
+      nextName = (i === n - 1) ? startPoint.name : stations[i + 1].name;
+    }
+    coords.push({ name: nextName, x: cx, y: cy });
   }
 
   return {
@@ -226,7 +240,7 @@ export function calcClosedTraverse(params) {
 export function calcAttachedTraverse(params) {
   const {
     startPoint, startAzimuth, endPoint, endAzimuth,
-    angleType, stations, angleLimit, kLimit, integerMode
+    angleType, stations, angleLimit, kLimit, integerMode, isStartPointMatching
   } = params;
 
   if (!Array.isArray(stations) || stations.length < 2) {
@@ -253,11 +267,11 @@ export function calcAttachedTraverse(params) {
   fBetaDeg = ((fBetaDeg + 180) % 360 + 360) % 360 - 180;
   const fBeta = fBetaDeg * 3600;
   const fBetaLimit = angleLimit ?? 40 * Math.sqrt(n);
-  const fBetaOver = Math.abs(fBeta) > fBetaLimit;
+  const fBetaOver = Math.abs(fBetaDeg * 3600) > fBetaLimit;
 
   // 2) 改正 + 方位角
   const { adjusted, azimuths, lastAz } = adjustAnglesAndAzimuths(
-    obs, startAzimuth, angleType, fBeta, integerMode
+    obs, startAzimuth, angleType, fBetaDeg * 3600, integerMode, isStartPointMatching
   );
   const azClosureErr = (lastAz - endAzimuth) * 3600;       // 应 ≈ 0
 
@@ -286,7 +300,11 @@ export function calcAttachedTraverse(params) {
   for (let i = 0; i < n; i++) {
     cx += adjIncs[i].adjustedDx;
     cy += adjIncs[i].adjustedDy;
-    coords.push({ name: stations[i].name, x: cx, y: cy });
+    let nextName = stations[i].name;
+    if (isStartPointMatching) {
+      nextName = (i === n - 1) ? endPoint.name : stations[i + 1].name;
+    }
+    coords.push({ name: nextName, x: cx, y: cy });
   }
 
   return {

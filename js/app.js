@@ -78,37 +78,6 @@ function recompute() {
     // 算法需要的是“第一条边方位角”，且角度对应边终点
     if (stationsList.length >= 3 && stationsList[0].name.trim() && stationsList[0].name.trim() === state.startPoint.name.trim()) {
       convertedModel = true;
-      const st0 = stationsList[0];
-      const beta0 = dmsToDecimal(st0.deg, st0.min, st0.sec);
-      // α_第一条边 = α_后视 + β0 ± 180 (左角+) / α_第一条边 = α_后视 - β0 ± 180 (右角-)
-      if (state.angleType === 'left') {
-        startAzDec = normalize360(startAzDec + beta0 - 180);
-      } else {
-        startAzDec = normalize360(startAzDec - beta0 + 180);
-      }
-      // 重组 stations：把第 i 站的角度和第 i-1 站的距离配对
-      // 最后闭合点（A1）需要借用最末尾的一个测站的距离
-      const newStations = [];
-      for (let i = 1; i < stationsList.length; i++) {
-        newStations.push({
-          name: stationsList[i].name,
-          deg: stationsList[i].deg,
-          min: stationsList[i].min,
-          sec: stationsList[i].sec,
-          distance: stationsList[i-1].distance
-        });
-      }
-      // 对于闭合导线，末尾应该回到A1
-      if (state.mode === 'closed') {
-        newStations.push({
-          name: st0.name, // A1
-          deg: st0.deg,   // 这里其实闭合差计算不会用到，算法里只算n个角
-          min: st0.min,
-          sec: st0.sec,
-          distance: stationsList[stationsList.length - 1].distance
-        });
-      }
-      stationsList = newStations;
     }
 
     const params = {
@@ -117,7 +86,8 @@ function recompute() {
       angleType: state.angleType,
       stations: stationsList,
       kLimit: 1 / state.kLimit,
-      integerMode: state.integerMode
+      integerMode: state.integerMode,
+      isStartPointMatching: convertedModel
     };
 
     if (state.mode === 'attached') {
@@ -403,31 +373,25 @@ function renderResult() {
       az: currentStartAz, dist: null, dx: null, dy: null, vx: null, vy: null, adjDx: null, adjDy: null
     }));
 
-    // 2. 渲染首站 (A1) 的点行，包含 A1 的角度和 A1 的初始坐标
-    // 在 convertedModel 中，A1 的角度被移到了 adjustedAngles 的最后一个
-    const a1Angle = lastResult.adjustedAngles[lastResult.adjustedAngles.length - 1];
-    tbody.appendChild(buildResultRow({
-      type: 'point',
-      name: state.startPoint.name,
-      betaRaw: a1Angle.original, 
-      vBeta: a1Angle.correction, 
-      betaAdj: a1Angle.adjusted,
-      x: state.startPoint.x, 
-      y: state.startPoint.y
-    }));
-
-    // 3. 循环渲染所有的边和其他点
     for (let i = 0; i < lastResult.adjustedAngles.length; i++) {
-      const a = lastResult.adjustedAngles[i]; // i=0 是 A2
-      const inc = lastResult.increments[i];   // i=0 是 A1->A2
-      const coord = lastResult.coordinates[i + 1]; // i=0 是 A2
+      const a = lastResult.adjustedAngles[i];
+      const inc = lastResult.increments[i];
+      const coord = lastResult.coordinates[i];
+      
+      // 渲染点 (i=0 时为 A1，并带上初始坐标)
+      tbody.appendChild(buildResultRow({
+        type: 'point',
+        name: a.name,
+        betaRaw: a.original, vBeta: a.correction, betaAdj: a.adjusted,
+        x: coord.x, y: coord.y
+      }));
 
-      // 渲染边 A1->A2
+      // 渲染边
       let edgeName = '';
-      if (i === 0) {
-        edgeName = `${state.startPoint.name} → ${a.name}`;
+      if (i < lastResult.adjustedAngles.length - 1) {
+        edgeName = `${a.name} → ${lastResult.adjustedAngles[i+1].name}`;
       } else {
-        edgeName = `${lastResult.adjustedAngles[i-1].name} → ${a.name}`;
+        edgeName = `${a.name} → ${state.mode === 'closed' ? state.startPoint.name : state.endPoint.name}`;
       }
       
       tbody.appendChild(buildResultRow({
@@ -436,27 +400,16 @@ function renderResult() {
         az: lastResult.azimuths[i],
         dist: inc.distance, dx: inc.dx, dy: inc.dy, vx: inc.vx, vy: inc.vy, adjDx: inc.adjustedDx, adjDy: inc.adjustedDy
       }));
-
-      // 渲染点
-      if (i < lastResult.adjustedAngles.length - 1) {
-        // 中间点 A2, A3... 有角度和坐标
-        tbody.appendChild(buildResultRow({
-          type: 'point',
-          name: a.name,
-          betaRaw: a.original, vBeta: a.correction, betaAdj: a.adjusted,
-          x: coord.x, y: coord.y
-        }));
-      } else {
-        // 最后一个点是 A1 (闭合点)
-        // A1 的角度已经在开头渲染过了，所以这里角度为空，只显示闭合坐标
-        tbody.appendChild(buildResultRow({
-          type: 'point',
-          name: state.startPoint.name,
-          betaRaw: null, vBeta: null, betaAdj: null,
-          x: coord.x, y: coord.y
-        }));
-      }
     }
+    
+    // 渲染闭合点
+    const lastCoord = lastResult.coordinates[lastResult.coordinates.length - 1];
+    tbody.appendChild(buildResultRow({
+      type: 'point',
+      name: state.mode === 'closed' ? state.startPoint.name : state.endPoint.name,
+      betaRaw: null, vBeta: null, betaAdj: null,
+      x: lastCoord.x, y: lastCoord.y
+    }));
   } else {
     // === 旧模型 / 附合导线模型 ===
     
