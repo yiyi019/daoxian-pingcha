@@ -1,0 +1,11 @@
+{
+  "name": "traverse-calc",
+  "version": "0.1.0",
+  "description": "闭合/附合导线测量内业计算 Web App",
+  "type": "module",
+  "scripts": {
+    "test": "node js/test.js",
+    "dev": "npx vercel dev"
+  },
+  "private": true
+}

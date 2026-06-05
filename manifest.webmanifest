@@ -1,0 +1,25 @@
+{
+  "name": "导线平差计算",
+  "short_name": "导线平差",
+  "description": "闭合/附合导线测量内业计算 App",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f1f5f9",
+  "theme_color": "#0f766e",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='36' fill='%230f766e'/><text x='96' y='128' text-anchor='middle' fill='white' font-size='110' font-family='sans-serif' font-weight='bold'>导</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='96' fill='%230f766e'/><text x='256' y='340' text-anchor='middle' fill='white' font-size='290' font-family='sans-serif' font-weight='bold'>导</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

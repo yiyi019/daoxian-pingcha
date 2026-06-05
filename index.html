@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="导线平差">
+  <title>导线平差计算</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='44' fill='%230f766e'/><text x='50' y='62' text-anchor='middle' fill='white' font-size='42' font-family='sans-serif' font-weight='bold'>导</text></svg>">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1 class="app-title">导线平差</h1>
+    <nav class="topbar-actions">
+      <button id="btn-new"   class="icon-btn" title="新建" aria-label="新建">📄</button>
+      <button id="btn-save"  class="icon-btn" title="保存" aria-label="保存">💾</button>
+      <button id="btn-load"  class="icon-btn" title="载入" aria-label="载入">📂</button>
+      <button id="btn-export" class="icon-btn" title="导出" aria-label="导出">📤</button>
+      <button id="btn-help"  class="icon-btn" title="帮助" aria-label="帮助">❓</button>
+    </nav>
+  </header>
+
+  <!-- 模式切换：贴顶栏下方，滚动时也始终可见 -->
+  <div class="sticky-bar">
+    <div class="mode-switch" role="tablist">
+      <button id="mode-closed"   class="mode-btn active" data-mode="closed">闭合导线</button>
+      <button id="mode-attached" class="mode-btn"        data-mode="attached">附合导线</button>
+    </div>
+  </div>
+
+  <main class="container">
+    <!-- 起算数据 -->
+    <section class="card">
+      <h2 class="card-title">起算数据</h2>
+
+      <div class="form-row">
+        <label class="form-field">
+          <span>起点名</span>
+          <input type="text" id="start-name" maxlength="4" autocomplete="off">
+        </label>
+        <label class="form-field">
+          <span>起点 X (m)</span>
+          <input type="number" id="start-x" step="0.001" inputmode="decimal">
+        </label>
+        <label class="form-field">
+          <span>起点 Y (m)</span>
+          <input type="number" id="start-y" step="0.001" inputmode="decimal">
+        </label>
+      </div>
+
+      <div class="az-block">
+        <div class="az-block-row">
+          <label class="form-field dms-field az-block-input">
+            <span>起始方位角</span>
+            <div class="dms-input" id="start-az-dms-row">
+              <input type="number" id="start-az-d" inputmode="numeric" placeholder="°">
+              <span>°</span>
+              <input type="number" id="start-az-m" inputmode="numeric" placeholder="′">
+              <span>′</span>
+              <input type="number" id="start-az-s" step="0.01" inputmode="decimal" placeholder="″">
+              <span>″</span>
+            </div>
+            <input type="number" id="start-az-decimal" step="0.0001" inputmode="decimal"
+                   placeholder="十进制度, 如 96.86" hidden>
+          </label>
+          <button type="button" id="btn-toggle-start-decimal" class="link-btn" title="切换为十进制输入">⇄ 十进制</button>
+          <button type="button" id="btn-toggle-start-reverse" class="link-btn" title="用两个已知点反算方位角">📐 反算</button>
+        </div>
+
+        <div id="start-reverse-panel" class="reverse-panel" hidden>
+          <div class="form-row">
+            <label class="form-field">
+              <span>已知点 B 名</span>
+              <input type="text" id="start-b-name" maxlength="4" value="B" autocomplete="off">
+            </label>
+            <label class="form-field">
+              <span>B 点 X (m)</span>
+              <input type="number" id="start-b-x" step="0.001" inputmode="decimal">
+            </label>
+            <label class="form-field">
+              <span>B 点 Y (m)</span>
+              <input type="number" id="start-b-y" step="0.001" inputmode="decimal">
+            </label>
+          </div>
+          <div class="computed-display">
+            → α_AB = <b id="start-b-az-display">—</b>
+          </div>
+        </div>
+      </div>
+
+      <div id="attached-end" hidden>
+        <div class="form-row">
+          <label class="form-field">
+            <span>终点名</span>
+            <input type="text" id="end-name" maxlength="4" autocomplete="off">
+          </label>
+          <label class="form-field">
+            <span>终点 X (m)</span>
+            <input type="number" id="end-x" step="0.001" inputmode="decimal">
+          </label>
+          <label class="form-field">
+            <span>终点 Y (m)</span>
+            <input type="number" id="end-y" step="0.001" inputmode="decimal">
+          </label>
+        </div>
+
+        <div class="az-block">
+          <div class="az-block-row">
+            <label class="form-field dms-field az-block-input">
+              <span>终止方位角</span>
+              <div class="dms-input" id="end-az-dms-row">
+                <input type="number" id="end-az-d" inputmode="numeric" placeholder="°">
+                <span>°</span>
+                <input type="number" id="end-az-m" inputmode="numeric" placeholder="′">
+                <span>′</span>
+                <input type="number" id="end-az-s" step="0.01" inputmode="decimal" placeholder="″">
+                <span>″</span>
+              </div>
+              <input type="number" id="end-az-decimal" step="0.0001" inputmode="decimal"
+                     placeholder="十进制度, 如 96.86" hidden>
+            </label>
+            <button type="button" id="btn-toggle-end-decimal" class="link-btn" title="切换为十进制输入">⇄ 十进制</button>
+            <button type="button" id="btn-toggle-end-reverse" class="link-btn" title="用两个已知点反算方位角">📐 反算</button>
+          </div>
+
+          <div id="end-reverse-panel" class="reverse-panel" hidden>
+            <div class="form-row">
+              <label class="form-field">
+                <span>前一点 C 名 <small class="hint">(C→D 终止边)</small></span>
+                <input type="text" id="end-c-name" maxlength="4" value="C" autocomplete="off">
+              </label>
+              <label class="form-field">
+                <span>C 点 X (m)</span>
+                <input type="number" id="end-c-x" step="0.001" inputmode="decimal">
+              </label>
+              <label class="form-field">
+                <span>C 点 Y (m)</span>
+                <input type="number" id="end-c-y" step="0.001" inputmode="decimal">
+              </label>
+            </div>
+            <div class="computed-display">
+              → α_CD = <b id="end-c-az-display">—</b>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label class="form-field">
+          <span>角度限差 <small id="fbeta-limit-hint" class="hint"></small></span>
+          <input type="text" value="自动: ±40″·√n" readonly>
+        </label>
+        <label class="form-field">
+          <span>K 限差</span>
+          <select id="k-limit-select">
+            <option value="2000">1/2000</option>
+            <option value="4000">1/4000</option>
+            <option value="6000">1/6000</option>
+            <option value="8000">1/8000</option>
+            <option value="10000">1/10000</option>
+            <option value="15000">1/15000</option>
+          </select>
+        </label>
+      </div>
+
+      <fieldset class="radio-group">
+        <legend>角度类型</legend>
+        <label><input type="radio" name="angle-type" value="left"> 左角</label>
+        <label><input type="radio" name="angle-type" value="right" checked> 右角</label>
+      </fieldset>
+
+      <label class="check-row">
+        <input type="checkbox" id="integer-mode-toggle">
+        <span>整数修正模式（v_β 整秒、vx/vy 1mm 整数倍；余量按 |β| / 边长大小分）</span>
+      </label>
+    </section>
+
+    <!-- 测站角度表（点号 + β，不含边长） -->
+    <section class="card">
+      <h2 class="card-title">测站角度表 <small class="hint">行可增减</small></h2>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th class="col-name">点号</th>
+              <th class="col-dms">°</th>
+              <th class="col-dms">′</th>
+              <th class="col-dms">″</th>
+              <th class="col-act"></th>
+            </tr>
+          </thead>
+          <tbody id="stations-body"></tbody>
+        </table>
+      </div>
+      <button id="btn-add-row" class="btn-add-row">+ 添加一行</button>
+    </section>
+
+    <!-- 边长表（独立表：每条边 = 一行；标签只读，距离可输入） -->
+    <section class="card">
+      <h2 class="card-title">边长表 <small class="hint">每条边的水平距离，标签自动随点号更新</small></h2>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th class="col-seg">起点 → 终点</th>
+              <th class="col-num">边长(m)</th>
+            </tr>
+          </thead>
+          <tbody id="distances-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 警告条 -->
+    <div id="warning-bar" class="warning-bar" hidden></div>
+
+    <!-- 计算结果 -->
+    <section class="card result-card">
+      <h2 class="card-title">计算结果 <small class="hint">点底部「🚀 计算」刷新</small></h2>
+      <div class="table-scroll">
+        <table class="data-table result-table" id="result-table">
+          <thead>
+            <tr>
+              <th rowspan="2" class="col-name">点</th>
+              <th colspan="4" class="grp-angle">角度</th>
+              <th rowspan="2" class="col-num">边长</th>
+              <th colspan="2" class="grp-corr">坐标增量(未修正)</th>
+              <th colspan="2" class="grp-corr">改正数</th>
+              <th colspan="2" class="grp-corr">坐标增量(修正后)</th>
+              <th colspan="2" class="grp-corr">坐标</th>
+            </tr>
+            <tr>
+              <th class="col-dms sub">观测角</th>
+              <th class="col-num sub">v<sub>β</sub></th>
+              <th class="col-dms sub">改正后</th>
+              <th class="col-dms sub">方位角</th>
+              <th class="col-num sub">X'</th>
+              <th class="col-num sub">Y'</th>
+              <th class="col-num sub">vx</th>
+              <th class="col-num sub">vy</th>
+              <th class="col-num sub">ΔX</th>
+              <th class="col-num sub">ΔY</th>
+              <th class="col-num sub">X</th>
+              <th class="col-num sub">Y</th>
+            </tr>
+          </thead>
+          <tbody id="result-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 闭合差汇总 -->
+    <section class="card">
+      <h2 class="card-title">闭合差汇总</h2>
+      <div class="closure-grid">
+        <div class="closure-item"><span>fβ</span><b id="fbeta">—</b></div>
+        <div class="closure-item"><span>fβ允</span><b id="fbeta-limit">—</b></div>
+        <div class="closure-item"><span>fx</span><b id="fx">—</b></div>
+        <div class="closure-item"><span>fy</span><b id="fy">—</b></div>
+        <div class="closure-item"><span>fs</span><b id="fs">—</b></div>
+        <div class="closure-item"><span>K</span><b id="k">—</b><small id="k-limit-display" class="hint"></small></div>
+      </div>
+    </section>
+
+    <!-- 略图 -->
+    <section class="card">
+      <h2 class="card-title">略图</h2>
+      <div class="sketch-wrap">
+        <canvas id="sketch"></canvas>
+      </div>
+    </section>
+
+    <footer class="footer">
+      坐标约定：<b>X = 北（纵），Y = 东（横）</b>，方位角从北起顺时针
+    </footer>
+  </main>
+
+  <!-- 底部 sticky 计算按钮：始终可见；改输入后变橙色脉动 -->
+  <div class="compute-bar">
+    <button id="btn-compute" class="btn-compute" type="button">🚀 计算</button>
+  </div>
+
+  <!-- 模态: 方案管理 -->
+  <div id="modal-load" class="modal" hidden>
+    <div class="modal-backdrop modal-close"></div>
+    <div class="modal-content">
+      <div class="modal-head">
+        <h2>已保存的方案</h2>
+        <button class="modal-close icon-btn">✕</button>
+      </div>
+      <ul id="saved-list" class="saved-list"></ul>
+    </div>
+  </div>
+
+  <!-- 模态: 导出 -->
+  <div id="modal-export" class="modal" hidden>
+    <div class="modal-backdrop modal-close"></div>
+    <div class="modal-content">
+      <div class="modal-head">
+        <h2>导出</h2>
+        <button class="modal-close icon-btn">✕</button>
+      </div>
+      <div class="modal-body export-actions">
+        <button id="btn-copy-tsv"   class="big-btn">📋 复制 TSV（粘到 Excel）</button>
+        <button id="btn-export-png" class="big-btn">📷 结果表 → PNG</button>
+        <button id="btn-export-json" class="big-btn">💾 导出 JSON 备份</button>
+        <button id="btn-import-json" class="big-btn">📥 从 JSON 导入</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 模态: 帮助 -->
+  <div id="modal-help" class="modal" hidden>
+    <div class="modal-backdrop modal-close"></div>
+    <div class="modal-content modal-wide">
+      <div class="modal-head">
+        <h2>使用说明</h2>
+        <button class="modal-close icon-btn">✕</button>
+      </div>
+      <div class="modal-body help-body">
+        <h3>基本流程</h3>
+        <ol>
+          <li>顶栏下方选 <b>闭合 / 附合</b> 模式</li>
+          <li>填入起点坐标、起始方位角（° ′ ″ 三栏，或点「十进制」直接输小数度）</li>
+          <li>附合模式再填终点坐标 + 终止方位角</li>
+          <li><b>测站角度表</b>填各测站观测角（点号 + ° ′ ″），<b>边长表</b>填各条边的水平距离</li>
+          <li>点底部 <b>「🚀 计算」</b> 按钮 → 下方出现结果表、闭合差、略图</li>
+          <li>改任何输入后，底部按钮会变橙提示「已修改 · 点此重算」</li>
+        </ol>
+        <h3>起算方位角输入方式</h3>
+        <ul>
+          <li><b>度分秒</b>（默认）：° ′ ″ 三栏，秒支持小数</li>
+          <li><b>十进制</b>：点「⇄ 十进制」切换，单个输入框直接输小数度（如 <code>96.86</code>）</li>
+          <li><b>反算</b>：点「📐 反算」展开，填入另一个已知点 B 的坐标，<b>自动用 atan2 算出 α_AB</b>（X=北, Y=东 约定下：α = atan2(ΔY, ΔX)）。附合模式终边同理：填 C→D 反算 α_CD</li>
+        </ul>
+        <h3>角度类型</h3>
+        <ul>
+          <li><b>左角</b>：前进方向左侧的夹角 → 沿导线逆时针行进时使用</li>
+          <li><b>右角</b>：前进方向右侧的夹角 → 沿导线顺时针行进时使用</li>
+        </ul>
+        <h3>测站表 vs 边长表</h3>
+        <ul>
+          <li><b>测站角度表</b>：每个测站一行（点号 + ° ′ ″），<b>不含边长</b></li>
+          <li><b>边长表</b>：每条边一行（起点 → 终点 + 边长），<b>独立于点号</b></li>
+          <li>闭合导线：第 n 行标签自动是 "最后一个点 → 起点"（闭合边）</li>
+          <li>附合导线：第 n 行标签自动是 "最后一个点 → 终点"（终止边）</li>
+          <li>改「测站角度表」里的点号，边长表的标签会自动跟着变</li>
+        </ul>
+        <h3>闭合差</h3>
+        <ul>
+          <li><b>fβ</b> 角度闭合差，限差 ±40″·√n</li>
+          <li><b>K = fs / ΣD</b> 全长相对闭合差，限差可调（默认 1/2000）</li>
+          <li>超限时<b>不阻断</b>，仍给出平差结果并在顶部显示警告</li>
+        </ul>
+        <h3>整数修正模式</h3>
+        <p>「限差/角型」卡最下方的复选框。勾上后 v_β 取整秒、vx/vy 取 1mm 整数倍，Σ 严格等于 -fβ / -fx / -fy，余量按 |β| / 边长 largest-remainder 分。符合测量手工报表习惯。</p>
+        <ul>
+          <li><b>v_β</b>：整数模式显示整秒（+7 / -6）；小数模式显示 1 位小数（+6.3）</li>
+          <li><b>vx / vy</b>：整数模式 3 位小数（1mm）；小数模式 4 位小数</li>
+          <li>例：fβ=-25″，4 角 → vβ=[+7, +6, +6, +6]（最大 |β| 拿 +1 秒）</li>
+        </ul>
+        <h3>结果表列结构（12 列）</h3>
+        <p><b>角度组</b>：观测角 ｜ <b>v_β</b> ｜ 改正后 ｜ 方位角</p>
+        <p><b>边长 / 改正数 / 坐标</b>：边长 ｜ <b>X'</b> ｜ <b>Y'</b> ｜ vx ｜ vy ｜ <b>ΔX</b> ｜ <b>ΔY</b> ｜ X ｜ Y</p>
+        <ul>
+          <li><b>v_β</b>：角度改正数（带符号，整数模式整秒 / 小数模式 1 位）</li>
+          <li><b>X' / Y'</b>：<b>未修正</b>的坐标增量（带撇 = 调整前）</li>
+          <li><b>vx / vy</b>：坐标增量改正数</li>
+          <li><b>ΔX / ΔY</b>：<b>修正后</b>的坐标增量</li>
+          <li><b>X / Y</b>：调整后最终坐标</li>
+        </ul>
+        <h3>导出</h3>
+        <ul>
+          <li><b>TSV</b>：制表符分隔，复制后直接粘到 Excel 单元格自动对齐</li>
+          <li><b>PNG</b>：结果表截图，可发微信/邮件</li>
+          <li><b>JSON</b>：完整工程备份</li>
+        </ul>
+        <h3>数据保存</h3>
+        <p>所有数据自动存到本地浏览器，<b>不会上传服务器</b>。点击顶部 💾 命名保存方案，📂 切换历史方案。</p>
+        <h3>添加到主屏幕</h3>
+        <p>手机浏览器打开后，可在菜单选择"添加到主屏幕"，即可像 App 一样使用。</p>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
