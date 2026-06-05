@@ -390,94 +390,118 @@ function renderResult() {
   // 渲染交错表格
   let currentStartAz = lastResult.convertedModel ? lastResult.originalStartAz : resolveStartAz();
 
-  // 首站 (A1)
   const isStartPointMatching = lastResult.convertedModel;
-  tbody.appendChild(buildResultRow({
-    type: 'point',
-    name: state.startPoint.name,
-    betaRaw: null, betaAdj: null, vBeta: null,
-    x: state.startPoint.x, y: state.startPoint.y
-  }));
 
   if (isStartPointMatching) {
-    // 渲染后视方位角边
-    const startBName = state.startBMode ? (state.startB?.name || 'B') : 'B';
+    // === 用户模型：首站就是起点 ===
+    
+    // 1. 渲染后视方位角边 (B -> A1)
+    const startBName = state.startBMode ? (state.startB?.name || '已知点') : '已知点';
     tbody.appendChild(buildResultRow({
       type: 'edge',
       name: `${startBName} → ${state.startPoint.name}`,
       az: currentStartAz, dist: null, dx: null, dy: null, vx: null, vy: null, adjDx: null, adjDy: null
     }));
-  }
 
-  for (let i = 0; i < lastResult.adjustedAngles.length; i++) {
-    const a = lastResult.adjustedAngles[i];
-    const inc = lastResult.increments[i];
-    const coord = lastResult.coordinates[i + 1];
+    // 2. 渲染首站 (A1) 的点行，包含 A1 的角度和 A1 的初始坐标
+    // 在 convertedModel 中，A1 的角度被移到了 adjustedAngles 的最后一个
+    const a1Angle = lastResult.adjustedAngles[lastResult.adjustedAngles.length - 1];
+    tbody.appendChild(buildResultRow({
+      type: 'point',
+      name: state.startPoint.name,
+      betaRaw: a1Angle.original, 
+      vBeta: a1Angle.correction, 
+      betaAdj: a1Angle.adjusted,
+      x: state.startPoint.x, 
+      y: state.startPoint.y
+    }));
 
-    if (!isStartPointMatching && i === 0) {
-       tbody.appendChild(buildResultRow({
-          type: 'edge',
-          name: `${state.startPoint.name} → ${a.name}`,
-          az: lastResult.azimuths[i],
-          dist: inc.distance, dx: inc.dx, dy: inc.dy, vx: inc.vx, vy: inc.vy, adjDx: inc.adjustedDx, adjDy: inc.adjustedDy
-       }));
-       tbody.appendChild(buildResultRow({
+    // 3. 循环渲染所有的边和其他点
+    for (let i = 0; i < lastResult.adjustedAngles.length; i++) {
+      const a = lastResult.adjustedAngles[i]; // i=0 是 A2
+      const inc = lastResult.increments[i];   // i=0 是 A1->A2
+      const coord = lastResult.coordinates[i + 1]; // i=0 是 A2
+
+      // 渲染边 A1->A2
+      let edgeName = '';
+      if (i === 0) {
+        edgeName = `${state.startPoint.name} → ${a.name}`;
+      } else {
+        edgeName = `${lastResult.adjustedAngles[i-1].name} → ${a.name}`;
+      }
+      
+      tbody.appendChild(buildResultRow({
+        type: 'edge',
+        name: edgeName,
+        az: lastResult.azimuths[i],
+        dist: inc.distance, dx: inc.dx, dy: inc.dy, vx: inc.vx, vy: inc.vy, adjDx: inc.adjustedDx, adjDy: inc.adjustedDy
+      }));
+
+      // 渲染点
+      if (i < lastResult.adjustedAngles.length - 1) {
+        // 中间点 A2, A3... 有角度和坐标
+        tbody.appendChild(buildResultRow({
           type: 'point',
           name: a.name,
           betaRaw: a.original, vBeta: a.correction, betaAdj: a.adjusted,
           x: coord.x, y: coord.y
-       }));
-    } else if (isStartPointMatching) {
-       // isStartPointMatching 的情况，我们有 N 个角，N条边。
-       tbody.appendChild(buildResultRow({
+        }));
+      } else {
+        // 最后一个点是 A1 (闭合点)
+        // A1 的角度已经在开头渲染过了，所以这里角度为空，只显示闭合坐标
+        tbody.appendChild(buildResultRow({
           type: 'point',
-          name: a.name, // A1, A2...
-          betaRaw: a.original, vBeta: a.correction, betaAdj: a.adjusted,
-          x: i === 0 ? state.startPoint.x : lastResult.coordinates[i].x, y: i === 0 ? state.startPoint.y : lastResult.coordinates[i].y
-       }));
-       
-       let edgeName = '';
-       if (i < lastResult.adjustedAngles.length - 1) {
-           edgeName = `${a.name} → ${lastResult.adjustedAngles[i+1].name}`;
-       } else {
-           edgeName = `${a.name} → ${state.mode === 'closed' ? state.startPoint.name : state.endPoint.name}`;
-       }
-       
-       tbody.appendChild(buildResultRow({
-          type: 'edge',
-          name: edgeName,
-          az: lastResult.azimuths[i],
-          dist: inc.distance, dx: inc.dx, dy: inc.dy, vx: inc.vx, vy: inc.vy, adjDx: inc.adjustedDx, adjDy: inc.adjustedDy
-       }));
-    } else {
-       let edgeName = '';
-       if (i < lastResult.adjustedAngles.length - 1) {
-           edgeName = `${a.name} → ${lastResult.adjustedAngles[i+1].name}`;
-       } else {
-           edgeName = `${a.name} → ${state.mode === 'closed' ? state.startPoint.name : state.endPoint.name}`;
-       }
-       tbody.appendChild(buildResultRow({
-          type: 'edge',
-          name: edgeName,
-          az: lastResult.azimuths[i],
-          dist: inc.distance, dx: inc.dx, dy: inc.dy, vx: inc.vx, vy: inc.vy, adjDx: inc.adjustedDx, adjDy: inc.adjustedDy
-       }));
-       tbody.appendChild(buildResultRow({
-          type: 'point',
-          name: edgeName.split('→')[1].trim(),
+          name: state.startPoint.name,
           betaRaw: null, vBeta: null, betaAdj: null,
           x: coord.x, y: coord.y
-       }));
+        }));
+      }
     }
-  }
-  
-  if (isStartPointMatching && state.mode === 'closed') {
+  } else {
+    // === 旧模型 / 附合导线模型 ===
+    
+    // 首站点行 (无观测角)
     tbody.appendChild(buildResultRow({
-       type: 'point',
-       name: state.startPoint.name,
-       betaRaw: null, vBeta: null, betaAdj: null,
-       x: state.startPoint.x, y: state.startPoint.y
+      type: 'point',
+      name: state.startPoint.name,
+      betaRaw: null, betaAdj: null, vBeta: null,
+      x: state.startPoint.x, y: state.startPoint.y
     }));
+
+    if (state.mode === 'attached' && state.startBMode) {
+      tbody.appendChild(buildResultRow({
+        type: 'edge',
+        name: `${state.startB?.name || '已知点'} → ${state.startPoint.name}`,
+        az: currentStartAz, dist: null, dx: null, dy: null, vx: null, vy: null, adjDx: null, adjDy: null
+      }));
+    }
+
+    for (let i = 0; i < lastResult.adjustedAngles.length; i++) {
+      const a = lastResult.adjustedAngles[i];
+      const inc = lastResult.increments[i];
+      const coord = lastResult.coordinates[i + 1];
+
+      let edgeName = '';
+      if (i === 0) {
+        edgeName = `${state.startPoint.name} → ${a.name}`;
+      } else {
+        edgeName = `${lastResult.adjustedAngles[i-1].name} → ${a.name}`;
+      }
+
+      tbody.appendChild(buildResultRow({
+        type: 'edge',
+        name: edgeName,
+        az: lastResult.azimuths[i],
+        dist: inc.distance, dx: inc.dx, dy: inc.dy, vx: inc.vx, vy: inc.vy, adjDx: inc.adjustedDx, adjDy: inc.adjustedDy
+      }));
+
+      tbody.appendChild(buildResultRow({
+        type: 'point',
+        name: a.name,
+        betaRaw: a.original, vBeta: a.correction, betaAdj: a.adjusted,
+        x: coord.x, y: coord.y
+      }));
+    }
   }
 
   // Sum Row
