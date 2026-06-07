@@ -636,6 +636,106 @@ function printExcelLikeTable(r, title) {
     (c.k > c.kLimit ? ' ❌ 超限' : ' ✅'));
 }
 
+// ===================================================================
+// Test 13: isStartPointMatching 模式回归测试
+//   同一组数据以两种方式提交（首站=起点 vs 首站≠起点），
+//   验证闭合差、方位角、最终坐标完全一致。
+//   这是历史高频 bug 区域的回归保护。
+// ===================================================================
+function testStartPointMatching() {
+  console.log('\n[Test 13] isStartPointMatching 模式回归测试');
+
+  // a) 闭合导线：isStartPointMatching=true
+  const r1 = calcClosedTraverse({
+    startPoint: { name: 'A', x: 100, y: 100 },
+    startAzimuth: dmsToDecimal(96, 51, 36),
+    angleType: 'right',
+    stations: [
+      { name: 'A', deg: 121, min: 28, sec: 0, distance: 201.58 },
+      { name: 'B', deg: 108, min: 27, sec: 0, distance: 263.41 },
+      { name: 'C', deg: 84,  min: 10, sec: 30, distance: 241.00 },
+      { name: 'D', deg: 135, min: 48, sec: 0, distance: 83.84  },
+      { name: 'E', deg: 90,  min: 7,  sec: 30, distance: 231.32 }
+    ],
+    isStartPointMatching: true
+  });
+
+  // b) isStartPointMatching=false（标准模式）
+  const r2 = calcClosedTraverse({
+    startPoint: { name: 'A', x: 100, y: 100 },
+    startAzimuth: dmsToDecimal(96, 51, 36),
+    angleType: 'right',
+    stations: [
+      { name: 'B', deg: 121, min: 28, sec: 0, distance: 201.58 },
+      { name: 'C', deg: 108, min: 27, sec: 0, distance: 263.41 },
+      { name: 'D', deg: 84,  min: 10, sec: 30, distance: 241.00 },
+      { name: 'E', deg: 135, min: 48, sec: 0, distance: 83.84  },
+      { name: 'A', deg: 90,  min: 7,  sec: 30, distance: 231.32 }
+    ],
+    isStartPointMatching: false
+  });
+
+  // 核心不变量：fβ 一致（角度闭合差只取决于观测角总和）
+  ok(approxEq(r1.closure.fBeta, r2.closure.fBeta, 1e-9),
+     `fβ 一致: ${r1.closure.fBeta.toFixed(2)} vs ${r2.closure.fBeta.toFixed(2)}`);
+
+  // 方位角闭合差都应 ≈ 0
+  ok(Math.abs(r1.closure.azimuthClosureError) < 0.01,
+     `matching 模式方位角闭合差 = ${r1.closure.azimuthClosureError.toFixed(6)}″ ≈ 0`);
+  ok(Math.abs(r2.closure.azimuthClosureError) < 0.01,
+     `标准模式方位角闭合差 = ${r2.closure.azimuthClosureError.toFixed(6)}″ ≈ 0`);
+
+  // 坐标数量一致
+  ok(r1.coordinates.length === r2.coordinates.length,
+     `坐标点数一致: ${r1.coordinates.length} vs ${r2.coordinates.length}`);
+
+  // 首点坐标
+  ok(approxEq(r1.coordinates[0].x, 100, 1e-9) && approxEq(r1.coordinates[0].y, 100, 1e-9),
+     `matching 首点坐标 = (100, 100)`);
+  ok(approxEq(r2.coordinates[0].x, 100, 1e-9) && approxEq(r2.coordinates[0].y, 100, 1e-9),
+     `标准 首点坐标 = (100, 100)`);
+  
+  // 末点坐标都闭合回起点
+  const last1 = r1.coordinates[r1.coordinates.length - 1];
+  const last2 = r2.coordinates[r2.coordinates.length - 1];
+  ok(approxEq(last1.x, 100, 0.01) && approxEq(last1.y, 100, 0.01),
+     `matching 末点闭合: (${last1.x.toFixed(3)}, ${last1.y.toFixed(3)}) ≈ (100, 100)`);
+  ok(approxEq(last2.x, 100, 0.01) && approxEq(last2.y, 100, 0.01),
+     `标准 末点闭合: (${last2.x.toFixed(3)}, ${last2.y.toFixed(3)}) ≈ (100, 100)`);
+
+  // matching 模式的方位角应是标准模式方位角偏移 1 位（不含起始方位角）
+  // r1.azimuths[i] 应 ≈ r2.azimuths[i+1]（对前 n-1 个）
+  for (let i = 0; i < r1.azimuths.length - 1; i++) {
+    ok(dmsEq(r1.azimuths[i], r2.azimuths[i + 1], 0.01),
+       `α 偏移一致: r1[${i}]=${formatDms(r1.azimuths[i])} ≈ r2[${i+1}]=${formatDms(r2.azimuths[i + 1])}`);
+  }
+
+  // c) 附合导线测试：isStartPointMatching=true
+  const r3 = calcAttachedTraverse({
+    startPoint: { name: 'A', x: 1000, y: 1000 },
+    startAzimuth: 45.0,
+    endPoint: { name: 'E', x: 880, y: 1291.421356 },
+    endAzimuth: 135.0,
+    angleType: 'left',
+    stations: [
+      { name: 'A', deg: 225, min: 0, sec: 10, distance: 100.020 },
+      { name: 'B', deg: 225, min: 0, sec: 5,  distance: 149.970 },
+      { name: 'C', deg: 224, min: 59, sec: 50, distance: 100.010 },
+      { name: 'D', deg: 135, min: 0, sec: 15, distance: 120.030 }
+    ],
+    isStartPointMatching: true
+  });
+
+  ok(approxEq(r3.closure.fBeta, 20, 0.01),
+     `附合 matching fβ = ${formatSeconds(r3.closure.fBeta)} ≈ +20″`);
+  ok(Math.abs(r3.closure.azimuthClosureError) < 0.01,
+     `附合 matching 方位角闭合差 ≈ 0`);
+  
+  const lastA3 = r3.coordinates[r3.coordinates.length - 1];
+  ok(approxEq(lastA3.x, 880, 1e-3) && approxEq(lastA3.y, 1291.421356, 1e-3),
+     `附合终点闭合: (${lastA3.x.toFixed(3)}, ${lastA3.y.toFixed(3)}) ≈ (880, 1291.421)`);
+}
+
 // ============== main ==============
 console.log('═══════════════════════════════════════════════════════');
 console.log('  P1 算法自测：闭合/附合导线平差');
@@ -664,6 +764,8 @@ printExcelLikeTable(r11, 'Test 11 附合导线 4站（带误差）');
 
 const r12 = testClosedTraverseSixStations();
 printExcelLikeTable(r12, 'Test 12 闭合导线 6站（带误差）');
+
+testStartPointMatching();
 
 console.log('\n═══════════════════════════════════════════════════════');
 console.log(`  结果: ${pass} passed, ${fail} failed`);

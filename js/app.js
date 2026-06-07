@@ -6,7 +6,7 @@ import { dmsToDecimal, decimalToDms, formatDms, formatSeconds, azimuthBetween, n
 import { calcClosedTraverse, calcAttachedTraverse } from './traverse.js';
 import {
   saveProject, listProjects, getProject, deleteProject, newProjectId,
-  saveDraft, loadDraft
+  saveDraft, loadDraft, migrateState
 } from './storage.js';
 import { drawTraverse } from './sketch.js';
 import { STATE_VERSION } from './version.js';
@@ -114,9 +114,12 @@ function recompute() {
 }
 
 // 输入被改 → 标脏 + 存草稿 + 渲染派生显示（不重算、不重建 input → 保留焦点 / 光标）
+let _draftTimer = null;
 function markDirty() {
   stateDirty = true;
-  saveDraft(state);
+  // debounce saveDraft，减少 localStorage 写入频率
+  clearTimeout(_draftTimer);
+  _draftTimer = setTimeout(() => saveDraft(state), 500);
   renderDerived();
   updateComputeButton();
 }
@@ -305,7 +308,6 @@ function renderInputs() {
 // ─────────────────────────────────────────────
 // 输出区：从 lastResult 渲染
 // ─────────────────────────────────────────────
-// 输出区：从 lastResult 渲染
 function renderResult() {
   const tbody = $('#result-body');
   tbody.innerHTML = '';
@@ -737,8 +739,8 @@ function bindEvents() {
     const idx = state.stations.length;
     const letter = String.fromCharCode('A'.charCodeAt(0) + (idx % 26));
     const suffix = idx >= 26 ? String(Math.floor(idx / 26)) : '';
-    const next = letter + suffix;
-    state.stations.push({ name: next, deg: 0, min: 0, sec: 0, distance: last ? last.distance : 100 });
+    const nextName = letter + suffix;
+    state.stations.push({ name: nextName, deg: 0, min: 0, sec: 0, distance: last ? last.distance : 100 });
     render();
   });
 
@@ -771,6 +773,11 @@ function bindEvents() {
   // 模态关闭
   $$('.modal-close, .modal-backdrop').forEach(el => {
     el.addEventListener('click', closeModals);
+  });
+
+  // ESC 键关闭模态框
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeModals();
   });
 }
 
@@ -985,7 +992,12 @@ function importJson() {
       try {
         const data = JSON.parse(r.result);
         if (data.state) {
-          state = data.state;
+          const migrated = migrateState(data.state);
+          if (!migrated || !migrated.stations) {
+            alert('JSON 数据格式不兼容（缺少必要字段或测站数不足 3）');
+            return;
+          }
+          state = migrated;
           currentProjectId = null;
           stateDirty = false;
           closeModals();

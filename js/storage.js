@@ -30,7 +30,7 @@ function writeJSON(key, val) {
   }
 }
 
-function migrateState(st) {
+export function migrateState(st) {
   // 字段补全: 老草稿可能缺新加的字段, 用默认填上, 避免 undefined 引发渲染错
   if (!st) return null;
   return {

@@ -322,39 +322,5 @@ export function calcAttachedTraverse(params) {
   };
 }
 
-/**
- * 把结果格式化为 Excel 风格表格行（每行一测站）
- * 返回 rows 数组，每行字段：name, betaRaw, betaAdj, az, dist, vx, vy, dx, dy, x, y
- * - betaRaw/betaAdj/az 为格式化好的 DMS 字符串
- * - dist/vx/vy/dx/dy/x/y 为 number（UI 端按需格式化）
- */
-export function formatAsExcelRows(result) {
-  const { adjustedAngles, azimuths, increments, coordinates, stations } = unwrap(result);
-  const rows = [];
-  for (let i = 0; i < adjustedAngles.length; i++) {
-    rows.push({
-      name: stations[i].name,
-      betaRaw: adjustedAngles[i].original,           // 十进制，UI 端转 DMS
-      betaAdj: adjustedAngles[i].adjusted,
-      vBeta: adjustedAngles[i].correction,          // 秒
-      az: azimuths[i],
-      dist: increments[i].distance,
-      vx: increments[i].vx,
-      vy: increments[i].vy,
-      dx: increments[i].dx,
-      dy: increments[i].dy,
-      x: coordinates[i + 1].x,                      // 第 0 个是起点，第 i+1 是本测站
-      y: coordinates[i + 1].y
-    });
-  }
-  return rows;
-}
 
-// 工具：从结果里取 stations（仅当 result 携带了原始 stations 时用）
-function unwrap(result) {
-  if (!result._stations) {
-    // 重新构造一个 stations 视图：从 adjustedAngles 推出
-    return { ...result, stations: result.adjustedAngles.map(a => ({ name: a.name })) };
-  }
-  return result;
-}
+

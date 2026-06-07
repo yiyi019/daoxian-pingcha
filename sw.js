@@ -1,14 +1,17 @@
 // Service Worker - 离线缓存
-const CACHE = 'traverse-calc-v15';
+const CACHE = 'traverse-calc-v16';
 const ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
   './css/style.css',
+  './assets/icon-192.svg',
+  './assets/icon-512.svg',
   './js/dms.js',
   './js/traverse.js',
   './js/storage.js',
   './js/sketch.js',
+  './js/version.js',
   './js/app.js'
 ];
 
