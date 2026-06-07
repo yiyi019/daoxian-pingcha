@@ -344,7 +344,14 @@ function renderResult() {
   $('#fx').textContent = c.fx.toFixed(4) + ' m';
   $('#fy').textContent = c.fy.toFixed(4) + ' m';
   $('#fs').textContent = c.fs.toFixed(4) + ' m';
-  const kText = c.k > 0 ? `1/${Math.round(1 / c.k).toLocaleString()}` : '∞';
+  let kText;
+  if (c.k <= 0) {
+    kText = '∞';
+  } else if (c.k < 1e-6) {
+    kText = '< 1/1,000,000';
+  } else {
+    kText = `1/${Math.round(1 / c.k).toLocaleString()}`;
+  }
   $('#k').textContent = kText;
   $('#k').className = c.kOver ? 'over' : 'ok';
   $('#k-limit-display').textContent = `1/${state.kLimit.toLocaleString()}`;
@@ -873,7 +880,14 @@ function buildTsv() {
   });
 
   const c = lastResult.closure;
-  const kText = c.k > 0 ? `1/${Math.round(1 / c.k)}` : '∞';
+  let kText;
+  if (c.k <= 0) {
+    kText = '∞';
+  } else if (c.k < 1e-6) {
+    kText = '< 1/1,000,000';
+  } else {
+    kText = `1/${Math.round(1 / c.k)}`;
+  }
   const modeNote = state.integerMode ? ' [整数修正模式]' : '';
   lines.push('');
   lines.push(`fβ\t${formatSeconds(c.fBeta)}\tfβ允\t±${c.fBetaLimit.toFixed(1)}″\tfx\t${c.fx.toFixed(4)}\tfy\t${c.fy.toFixed(4)}\tfs\t${c.fs.toFixed(4)}\tK\t${kText}${modeNote}`);
