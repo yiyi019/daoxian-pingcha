@@ -1,6 +1,9 @@
 # 导线平差计算 App
 
+> 🚀 **在线体验网址**：[https://yiyil8020-ux.github.io/traverse-calc/](https://yiyil8020-ux.github.io/traverse-calc/)
+
 闭合 / 附合导线测量内业计算的移动端 Web App。纯 HTML/CSS/JS，零依赖，可部署到 Vercel / Netlify / GitHub Pages / 任意静态服务器。
+
 
 ## 功能
 
