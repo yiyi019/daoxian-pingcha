@@ -32,6 +32,7 @@ function defaultState() {
     angleType: 'right',
     kLimit: 2000,
     integerMode: false,
+    roundedMode: false,
     stations: [
       { name: 'A', deg: 90, min: 0, sec: 0, distance: 100 },
       { name: 'B', deg: 90, min: 0, sec: 0, distance: 100 },
@@ -87,6 +88,7 @@ function recompute() {
       stations: stationsList,
       kLimit: 1 / state.kLimit,
       integerMode: state.integerMode,
+      roundedMode: state.roundedMode,
       isStartPointMatching: convertedModel
     };
 
@@ -270,6 +272,7 @@ function renderInputs() {
   $('#k-limit-select').value = String(state.kLimit);
   $(`input[name="angle-type"][value="${state.angleType}"]`).checked = true;
   $('#integer-mode-toggle').checked = !!state.integerMode;
+  $('#rounded-mode-toggle').checked = !!state.roundedMode;
 
   const n = state.stations.length;
   $('#fbeta-limit-hint').textContent = `自动: ±40″·√${n} = ±${(40 * Math.sqrt(n)).toFixed(1)}″`;
@@ -705,6 +708,10 @@ function bindEvents() {
     state.integerMode = e.target.checked;
     markDirty();
   });
+  $('#rounded-mode-toggle').addEventListener('change', e => {
+    state.roundedMode = e.target.checked;
+    markDirty();
+  });
 
   // 测站角度表（事件委托）
   const stationsBody = $('#stations-body');
@@ -888,7 +895,10 @@ function buildTsv() {
   } else {
     kText = `1/${Math.round(1 / c.k)}`;
   }
-  const modeNote = state.integerMode ? ' [整数修正模式]' : '';
+  let modeNotes = [];
+  if (state.integerMode) modeNotes.push('整数修正模式');
+  if (state.roundedMode) modeNotes.push('手工验算模式');
+  const modeNote = modeNotes.length ? ` [${modeNotes.join(' + ')}]` : '';
   lines.push('');
   lines.push(`fβ\t${formatSeconds(c.fBeta)}\tfβ允\t±${c.fBetaLimit.toFixed(1)}″\tfx\t${c.fx.toFixed(4)}\tfy\t${c.fy.toFixed(4)}\tfs\t${c.fs.toFixed(4)}\tK\t${kText}${modeNote}`);
   return lines.join('\n');
@@ -967,7 +977,10 @@ function exportPng() {
   ctx.fillStyle = '#92400e'; ctx.font = 'bold 14px -apple-system, sans-serif';
   const cl = lastResult.closure;
   const kText = cl.k > 0 ? `1/${Math.round(1 / cl.k)}` : '∞';
-  const modeNote = state.integerMode ? '  ｜ 整数修正模式' : '';
+  let modeNotes = [];
+  if (state.integerMode) modeNotes.push('整数修正模式');
+  if (state.roundedMode) modeNotes.push('手工验算模式');
+  const modeNote = modeNotes.length ? `  ｜ ${modeNotes.join(' + ')}` : '';
   ctx.fillText(`fβ=${formatSeconds(cl.fBeta)} (±${cl.fBetaLimit.toFixed(1)}″)  fx=${cl.fx.toFixed(4)}  fy=${cl.fy.toFixed(4)}  fs=${cl.fs.toFixed(4)}  K=${kText}${modeNote}`, 12, y + 22);
   ctx.fillText(cl.fBetaOver || cl.kOver ? '❌ 超限（仍给出平差结果）' : '✅ 满足限差', 12, y + 44);
 

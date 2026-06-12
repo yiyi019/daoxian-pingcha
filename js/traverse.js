@@ -100,15 +100,20 @@ function adjustAnglesAndAzimuths(obsAngles, startAzimuth, angleType, fBeta, inte
  *   ΔX = D·cosα
  *   ΔY = D·sinα
  * 同时累加 ΣΔX、ΣΔY、ΣD
+ * @param {boolean} [roundedMode]  若 true：dx/dy 保留 3 位小数后再求和（与手工计算一致）
  */
-function computeIncrements(stations, azimuths) {
+function computeIncrements(stations, azimuths, roundedMode) {
   const n = stations.length;
   let sumDx = 0, sumDy = 0, sumD = 0;
   const incs = [];
   for (let i = 0; i < n; i++) {
     const az = azimuths[i];
-    const dx = stations[i].distance * Math.cos(az * DEG);
-    const dy = stations[i].distance * Math.sin(az * DEG);
+    let dx = stations[i].distance * Math.cos(az * DEG);
+    let dy = stations[i].distance * Math.sin(az * DEG);
+    if (roundedMode) {
+      dx = Math.round(dx * 1000) / 1000;
+      dy = Math.round(dy * 1000) / 1000;
+    }
     sumDx += dx;
     sumDy += dy;
     sumD += stations[i].distance;
@@ -162,7 +167,7 @@ function distributeClosure(incs, fx, fy, sumD, integerMode) {
  * @param {number} [params.kLimit]      全长相对闭合差限差（>0 数字），默认 1/2000
  */
 export function calcClosedTraverse(params) {
-  const { startPoint, startAzimuth, angleType, stations, angleLimit, kLimit, integerMode, isStartPointMatching } = params;
+  const { startPoint, startAzimuth, angleType, stations, angleLimit, kLimit, integerMode, isStartPointMatching, roundedMode } = params;
 
   if (!Array.isArray(stations) || stations.length < 3) {
     throw new Error('闭合导线至少需要 3 个测站');
@@ -188,7 +193,7 @@ export function calcClosedTraverse(params) {
   const azClosureErr = (lastAz - startAzimuth) * 3600;      // 应 ≈ 0
 
   // 3) 增量
-  const { incs, sumDx, sumDy, sumD } = computeIncrements(obs, azimuths);
+  const { incs, sumDx, sumDy, sumD } = computeIncrements(obs, azimuths, roundedMode);
   // 闭合：理论 ΣΔX = 0, ΣΔY = 0
   const fx = sumDx, fy = sumDy;
   const fs = Math.sqrt(fx * fx + fy * fy);
@@ -240,7 +245,7 @@ export function calcClosedTraverse(params) {
 export function calcAttachedTraverse(params) {
   const {
     startPoint, startAzimuth, endPoint, endAzimuth,
-    angleType, stations, angleLimit, kLimit, integerMode, isStartPointMatching
+    angleType, stations, angleLimit, kLimit, integerMode, isStartPointMatching, roundedMode
   } = params;
 
   if (!Array.isArray(stations) || stations.length < 2) {
@@ -276,7 +281,7 @@ export function calcAttachedTraverse(params) {
   const azClosureErr = (lastAz - endAzimuth) * 3600;       // 应 ≈ 0
 
   // 3) 增量
-  const { incs, sumDx, sumDy, sumD } = computeIncrements(obs, azimuths);
+  const { incs, sumDx, sumDy, sumD } = computeIncrements(obs, azimuths, roundedMode);
 
   // 4) 坐标闭合差：从起点推算到终点的坐标 vs 已知终点坐标
   let endX = startPoint.x, endY = startPoint.y;

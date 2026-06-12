@@ -49,6 +49,8 @@ export function migrateState(st) {
     endC: st.endC ? { name: st.endC.name ?? 'C', x: Number(st.endC.x) || 0, y: Number(st.endC.y) || 0 } : null,
     angleType: st.angleType === 'left' ? 'left' : 'right',
     kLimit: Number(st.kLimit) || 2000,
+    integerMode: !!st.integerMode,
+    roundedMode: !!st.roundedMode,
     stations: Array.isArray(st.stations) && st.stations.length >= 3 ? st.stations.map(s => ({
       name: String(s.name ?? '').slice(0, 4),
       deg: Number(s.deg) || 0,
