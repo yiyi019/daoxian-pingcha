@@ -36,6 +36,7 @@
   <main class="container">
     <!-- ========= 平差计算页面 ========= -->
     <div id="page-calc" data-page="calc">
+    <div class="input-column">
     <!-- 起算数据 -->
     <section class="card">
       <h2 class="card-title">起算数据</h2>
@@ -239,7 +240,9 @@
         </table>
       </div>
     </section>
+    </div><!-- /input-column -->
 
+    <div class="result-column">
     <!-- 警告条 -->
     <div id="warning-bar" class="warning-bar" hidden></div>
 
@@ -303,6 +306,7 @@
         <canvas id="sketch"></canvas>
       </div>
     </section>
+    </div><!-- /result-column -->
 
     <footer class="footer">
       坐标约定：<b>X = 北（纵），Y = 东（横）</b>，方位角从北起顺时针
@@ -318,6 +322,7 @@
         <h2 class="plotter-title">细部测量绘图</h2>
       </section>
 
+      <div class="plotter-main-col">
       <!-- 画布 -->
       <section class="card plotter-canvas-card">
         <div class="plotter-canvas-wrap">
@@ -361,7 +366,9 @@
           </div>
         </div>
       </section>
+      </div><!-- /plotter-main-col -->
 
+      <div class="plotter-side-col">
       <!-- 添加细部点 -->
       <section class="card">
         <h2 class="card-title">添加细部点</h2>
@@ -400,6 +407,7 @@
           <div class="empty-hint">暂无点位，请先计算导线或手动添加</div>
         </div>
       </section>
+      </div><!-- /plotter-side-col -->
 
       <footer class="footer">
         坐标约定：<b>X = 北（纵），Y = 东（横）</b>，方位角从北起顺时针

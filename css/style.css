@@ -887,26 +887,31 @@ body {
 }
 
 /* ═══════════════════════════════════════════
-   桌面端响应式适配 (≥ 900px)
-   仅通过 media query 追加样式，不改变移动端
+   桌面端双栏布局
+   移动端：wrapper div 使用 display:contents，完全透明
+   桌面端 (≥1100px)：左栏输入、右栏结果，左右并排
    ═══════════════════════════════════════════ */
 
-@media (min-width: 900px) {
+/* 移动端：包装 div 不可见，不影响原有布局 */
+.input-column,
+.result-column,
+.plotter-main-col,
+.plotter-side-col {
+  display: contents;
+}
 
-  /* ── 整体布局 ── */
-  body {
-    font-size: 15px;
-  }
+/* ── 桌面端 (≥1100px) ─────────────────────── */
+@media (min-width: 1100px) {
 
+  /* 容器加宽 */
   .container {
-    max-width: 960px;
-    padding: 12px 24px 100px;
-    gap: 16px;
+    max-width: 1440px;
+    padding: 12px 32px 110px;
   }
 
-  /* ── 顶栏 ── */
+  /* 顶栏 */
   .topbar {
-    padding: 14px 32px;
+    padding: 14px 40px;
     justify-content: flex-start;
     gap: 24px;
   }
@@ -921,32 +926,116 @@ body {
   .icon-btn {
     width: 40px; height: 40px;
     font-size: 19px;
-    border-radius: 8px;
     transition: background .15s, transform .1s;
   }
-  .icon-btn:hover {
-    background: var(--bg);
-    transform: translateY(-1px);
-  }
 
-  /* ── 模式切换 ── */
+  /* 模式切换条 */
   .sticky-bar {
-    padding: 10px 32px 8px;
+    padding: 10px 40px 8px;
   }
   .mode-switch {
-    max-width: 960px;
+    max-width: 420px;
   }
   .mode-btn {
-    font-size: 15px;
-    padding: 12px 16px;
+    padding: 10px 16px;
     transition: all .18s;
   }
-  .mode-btn:hover:not(.active) {
-    background: var(--bg);
-    color: var(--text);
+
+  /* ─── 平差计算页面：左右双栏 ─── */
+  #page-calc {
+    display: grid;
+    grid-template-columns: minmax(340px, 420px) 1fr;
+    gap: 16px 24px;
+    align-items: start;
   }
 
-  /* ── 卡片 ── */
+  .input-column {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    /* 输入区在滚动时吸顶，方便边看结果边改输入 */
+    position: sticky;
+    top: 80px;
+    align-self: start;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    padding-right: 4px;
+    /* 隐藏滚动条但保留可滚动 */
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+  .input-column::-webkit-scrollbar { width: 4px; }
+  .input-column::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+  .input-column::-webkit-scrollbar-track { background: transparent; }
+
+  .result-column {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  /* footer 跨两栏 */
+  #page-calc > footer {
+    grid-column: 1 / -1;
+  }
+
+  /* ─── 细部绘图页面：左画布 + 右侧栏 ─── */
+  #page-plotter {
+    display: grid;
+    grid-template-columns: 1fr minmax(300px, 380px);
+    gap: 16px 24px;
+    align-items: start;
+  }
+
+  /* plotter-header 跨满 */
+  .plotter-header {
+    grid-column: 1 / -1;
+    gap: 16px;
+    margin-bottom: 0;
+  }
+  .plotter-title {
+    font-size: 18px;
+  }
+
+  .plotter-main-col {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .plotter-side-col {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    /* 侧栏也吸顶 */
+    position: sticky;
+    top: 80px;
+    align-self: start;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+  .plotter-side-col::-webkit-scrollbar { width: 4px; }
+  .plotter-side-col::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+  .plotter-side-col::-webkit-scrollbar-track { background: transparent; }
+
+  /* plotter footer 跨满 */
+  #page-plotter > footer {
+    grid-column: 1 / -1;
+  }
+
+  /* 画布更高 */
+  #plotter-canvas {
+    height: 600px;
+  }
+  .plotter-tools-card {
+    padding: 16px 20px;
+  }
+
+  /* ─── 通用组件桌面优化 ─── */
+
+  /* 卡片 */
   .card {
     padding: 20px 24px;
     gap: 14px;
@@ -960,7 +1049,7 @@ body {
     font-size: 16px;
   }
 
-  /* ── 表单 ── */
+  /* 表单 */
   .form-row {
     grid-template-columns: 1fr 1fr 1fr;
     gap: 12px;
@@ -968,26 +1057,20 @@ body {
   .form-field input, .form-field select {
     padding: 10px 14px;
     font-size: 15px;
-    min-height: 44px;
-  }
-  .dms-input input {
-    padding: 10px 6px;
-    font-size: 16px;
-    min-height: 44px;
   }
 
-  /* ── 表格 ── */
+  /* 结果表格 — 在右栏里有更多空间 */
   .data-table {
     font-size: 14px;
   }
   .data-table th, .data-table td {
-    padding: 10px 8px;
+    padding: 10px 6px;
   }
   .result-table {
     font-size: 13px;
   }
 
-  /* ── 闭合差汇总 ── */
+  /* 闭合差汇总 */
   .closure-grid {
     grid-template-columns: repeat(4, 1fr);
     gap: 10px;
@@ -996,124 +1079,74 @@ body {
     padding: 12px 10px;
   }
 
-  /* ── 略图 ── */
+  /* 略图更高 */
   #sketch {
-    height: 420px;
+    height: 450px;
   }
 
-  /* ── 底部计算按钮 ── */
+  /* 底部计算按钮 — 收窄居中 */
   .compute-bar {
-    max-width: 960px;
-    padding: 12px 24px max(12px, env(safe-area-inset-bottom));
+    max-width: 1440px;
+    padding: 12px 40px max(12px, env(safe-area-inset-bottom));
   }
   .btn-compute {
-    max-width: 480px;
+    max-width: 420px;
     margin: 0 auto;
     border-radius: 14px;
     font-size: 16px;
-    min-height: 52px;
   }
 
-  /* ── 细部绘图 ── */
-  .plotter-header {
-    gap: 16px;
-    margin-bottom: 14px;
-  }
-  .plotter-title {
-    font-size: 18px;
-  }
-  #plotter-canvas {
-    height: 560px;
-  }
-  .plotter-tools-card {
-    padding: 16px 20px;
-  }
-  .tool-section {
-    padding: 10px 0;
-    gap: 14px;
-  }
-  .point-input-row {
-    grid-template-columns: 1fr 1fr 1fr auto;
-    gap: 12px;
-  }
-
-  /* ── 模态框 ── */
+  /* 模态框 */
   .modal-content {
     max-width: 640px;
   }
   .modal-wide {
     max-width: 800px;
   }
+
+  /* 细部点输入行 */
+  .point-input-row {
+    grid-template-columns: 1fr 1fr 1fr auto;
+    gap: 10px;
+  }
 }
 
-/* ── 超宽桌面 (≥ 1200px) ── */
-@media (min-width: 1200px) {
-
+/* ── 超宽桌面 (≥1440px) ── */
+@media (min-width: 1440px) {
   .container {
-    max-width: 1100px;
-    padding: 16px 32px 110px;
+    max-width: 1600px;
+    padding: 16px 48px 110px;
+  }
+  .topbar { padding: 14px 56px; }
+  .sticky-bar { padding: 10px 56px 8px; }
+  .compute-bar {
+    max-width: 1600px;
+    padding: 14px 56px max(14px, env(safe-area-inset-bottom));
   }
 
-  .topbar {
-    padding: 14px 48px;
-  }
-
-  .sticky-bar {
-    padding: 10px 48px 8px;
-  }
-  .mode-switch {
-    max-width: 480px;
+  #page-calc {
+    grid-template-columns: minmax(380px, 460px) 1fr;
+    gap: 20px 32px;
   }
 
   .card {
-    padding: 24px 32px;
-    gap: 16px;
+    padding: 24px 28px;
     border-radius: 16px;
   }
 
-  /* 起算数据在大屏可展示更多列 */
-  .form-row {
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 14px;
-  }
+  #sketch { height: 500px; }
+  #plotter-canvas { height: 700px; }
 
-  .closure-grid {
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-  }
-
-  .compute-bar {
-    max-width: 1100px;
-    padding: 14px 32px max(14px, env(safe-area-inset-bottom));
-  }
-  .btn-compute {
-    max-width: 520px;
-    min-height: 54px;
-    font-size: 17px;
-    border-radius: 16px;
-  }
-
-  /* 略图更高 */
-  #sketch {
-    height: 480px;
-  }
-
-  /* 细部绘图画布更大 */
-  #plotter-canvas {
-    height: 640px;
-  }
-
-  /* 模态框更宽一些 */
-  .modal-content {
-    max-width: 680px;
-  }
-  .modal-wide {
-    max-width: 880px;
-  }
+  .modal-content { max-width: 700px; }
+  .modal-wide { max-width: 920px; }
 }
 
 /* ── 鼠标悬停增强（仅非触摸设备） ── */
 @media (hover: hover) and (pointer: fine) {
+  .icon-btn:hover {
+    background: var(--bg);
+    transform: translateY(-1px);
+  }
   .mode-btn:hover:not(.active) {
     background: #f1f5f9;
     color: var(--text);
