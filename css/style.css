@@ -21,7 +21,7 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; padding: 0; overflow-x: hidden; }
+html, body { margin: 0; padding: 0; }
 body {
   font-family: var(--font);
   background: var(--bg);
@@ -59,11 +59,9 @@ body {
 /* ── 容器 ───────────────────────────────── */
 .container {
   max-width: 720px;
-  width: 100%;
   margin: 0 auto;
   padding: 4px 12px 100px;        /* 底部留出 sticky 计算按钮空间 */
   display: flex; flex-direction: column; gap: 12px;
-  overflow-x: hidden;
 }
 
 /* ── 模式切换（贴顶栏下方，滚动时也始终可见） ─ */
@@ -976,17 +974,14 @@ body {
     flex-direction: column;
     gap: 14px;
     min-width: 0;       /* 关键：允许在 grid 中收缩 */
-    overflow: hidden;   /* 防止宽内容撑破栏宽 */
   }
 
   /* 结果表格在右栏内部水平滚动，而不是撑破整个页面 */
   .result-column .card {
     min-width: 0;
-    overflow: hidden;
   }
   .result-column .table-scroll {
     overflow-x: auto;
-    margin: 0;
   }
 
   /* footer 跨两栏 */
