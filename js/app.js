@@ -1256,6 +1256,9 @@ function importJson() {
       } catch (e) {
         alert('JSON 解析失败: ' + e.message);
       }
+    };
+    r.readAsText(f);
+  };
   inp.click();
 }
 
