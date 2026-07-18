@@ -1,8 +1,13 @@
 // 闭合 / 附合导线平差计算
-// 输入：起算数据 + 测站列表
-// 输出：观测角改正、方位角、坐标增量与改正、最终坐标、闭合差汇总
+// 统一模型（matching）：
+//   - stations[0] = 起点（观测起点连接角 / 内角）
+//   - stations[i].distance = 离开该点的边长
+//   - startAzimuth 语义由 startAzBasis 决定（与最初版本一致）：
+//       'backsight' 后视方位角 α(已知→起点)  —— 默认
+//       'first'     首边方位角 α(起点→下一站)
+//   - 附合：另需 endConnAngle（终点连接角），不计入 stations
 
-import { dmsToDecimal, decimalToDms, normalize360, DEG } from './dms.js';
+import { dmsToDecimal, normalize360, DEG } from './dms.js';
 
 /**
  * 公共：把测站的度分秒输入转成十进制度，返回新数组（不修改原对象）
@@ -43,16 +48,27 @@ function integerDistribute(target, unit, n, weights) {
 }
 
 /**
- * 角度改正 + 推方位角
+ * 把角度差归一化到 (-180, 180] 度，再转秒
+ */
+function angleDiffSeconds(a, b) {
+  let d = ((a - b + 180) % 360 + 360) % 360 - 180;
+  return d * 3600;
+}
+
+/**
+ * 角度改正 + 推方位角（统一 matching 模型）
+ *
  *  - 左角： α_next = α_prev + β' - 180°
  *  - 右角： α_next = α_prev - β' + 180°
- * @param {boolean} [integerMode]  若 true：v_β 为整秒（按 |原始β| 大小分余量）
- * 返回 {adjustedAngles, azimuths}
- *   - adjustedAngles[i] = {name, original, correction, adjusted}（correction 单位：秒）
- *   - azimuths[i]        = 第 i 条边（站 i 出发）的方位角
- *   - azimuths.length    === n（不含回到起点的最后一条校验边）
+ *
+ * @param {Array<{name:string, original:number}>} obsAngles  参与改正的观测角（十进制度）
+ * @param {number} startAzimuth  用户输入的起算方位角（十进制度）
+ * @param {'left'|'right'} angleType
+ * @param {number} fBeta  角度闭合差（秒）
+ * @param {boolean} [integerMode]
+ * @param {'backsight'|'first'} [startAzBasis]
  */
-function adjustAnglesAndAzimuths(obsAngles, startAzimuth, angleType, fBeta, integerMode, isStartPointMatching) {
+function adjustAnglesAndAzimuths(obsAngles, startAzimuth, angleType, fBeta, integerMode, startAzBasis, edgeCount) {
   const n = obsAngles.length;
   let vArr;
   if (integerMode) {
@@ -68,38 +84,41 @@ function adjustAnglesAndAzimuths(obsAngles, startAzimuth, angleType, fBeta, inte
     adjusted: a.original + vArr[i] / 3600
   }));
 
-  let cur = startAzimuth;
+  const nEdges = edgeCount ?? n;
+  const basis = startAzBasis === 'first' ? 'first' : 'backsight';
   const azimuths = [];
-  
-  if (!isStartPointMatching) {
-    azimuths.push(normalize360(startAzimuth));
+
+  // 后视：cur = 后视方向，推边后得各边方位角
+  // 首边：先反推虚拟后视，使改正后第一条边仍等于输入的首边方位角
+  let cur;
+  if (basis === 'first') {
+    const b0 = adjusted[0].adjusted;
+    if (angleType === 'left') cur = normalize360(startAzimuth - b0 + 180);
+    else cur = normalize360(startAzimuth + b0 - 180);
+  } else {
+    cur = normalize360(startAzimuth);
+  }
+  const effectiveBacksight = cur;
+
+  for (let i = 0; i < nEdges; i++) {
+    if (angleType === 'left') cur = normalize360(cur + adjusted[i].adjusted - 180);
+    else cur = normalize360(cur - adjusted[i].adjusted + 180);
+    azimuths.push(cur);
   }
 
-  for (let i = 0; i < n; i++) {
-    let next;
-    if (angleType === 'left') {
-      next = cur + adjusted[i].adjusted - 180;
-    } else {
-      next = cur - adjusted[i].adjusted + 180;
-    }
-    cur = normalize360(next);
-    
-    if (isStartPointMatching) {
-      azimuths.push(cur);
-    } else {
-      if (i < n - 1) azimuths.push(cur);
-    }
+  let lastAz = cur;
+  if (n > nEdges) {
+    if (angleType === 'left') lastAz = normalize360(cur + adjusted[nEdges].adjusted - 180);
+    else lastAz = normalize360(cur - adjusted[nEdges].adjusted + 180);
   }
-  
-  const lastAz = cur;
-  return { adjusted, azimuths, lastAz };
+
+  return { adjusted, azimuths, lastAz, effectiveBacksight };
 }
 
 /**
  * 由方位角和边长算坐标增量（X=纵=北向, Y=横=东向）
  *   ΔX = D·cosα
  *   ΔY = D·sinα
- * 同时累加 ΣΔX、ΣΔY、ΣD
  * @param {boolean} [roundedMode]  若 true：dx/dy 保留 3 位小数后再求和（与手工计算一致）
  */
 function computeIncrements(stations, azimuths, roundedMode) {
@@ -124,11 +143,6 @@ function computeIncrements(stations, azimuths, roundedMode) {
 
 /**
  * 按边长比例分配 fx、fy 闭合差到各增量
- * @param {Array} incs       增量数组（含 dx, dy, distance, az）
- * @param {number} fx        X 方向闭合差
- * @param {number} fy        Y 方向闭合差
- * @param {number} sumD      总边长
- * @param {boolean} [integerMode]  若 true：vx/vy 为 0.001 m 的整数倍（按 distance 大小分余量）
  */
 function distributeClosure(incs, fx, fy, sumD, integerMode) {
   const distances = incs.map(inc => inc.distance);
@@ -161,13 +175,19 @@ function distributeClosure(incs, fx, fy, sumD, integerMode) {
  * @param {Object} params
  * @param {{name:string, x:number, y:number}} params.startPoint
  * @param {number} params.startAzimuth  十进制度
+ * @param {'backsight'|'first'} [params.startAzBasis]
  * @param {'left'|'right'} params.angleType
  * @param {Array<{name:string, deg:number, min:number, sec:number, distance:number}>} params.stations
- * @param {number} [params.angleLimit]  角度闭合差限差（秒），默认 40·√n
- * @param {number} [params.kLimit]      全长相对闭合差限差（>0 数字），默认 1/2000
+ * @param {number} [params.angleLimit]
+ * @param {number} [params.kLimit]
+ * @param {boolean} [params.integerMode]
+ * @param {boolean} [params.roundedMode]
  */
 export function calcClosedTraverse(params) {
-  const { startPoint, startAzimuth, angleType, stations, angleLimit, kLimit, integerMode, isStartPointMatching, roundedMode } = params;
+  const {
+    startPoint, startAzimuth, startAzBasis,
+    angleType, stations, angleLimit, kLimit, integerMode, roundedMode
+  } = params;
 
   if (!Array.isArray(stations) || stations.length < 3) {
     throw new Error('闭合导线至少需要 3 个测站');
@@ -179,7 +199,7 @@ export function calcClosedTraverse(params) {
   const n = stations.length;
   const obs = stationsToDecimal(stations);
 
-  // 1) 角度闭合差
+  // 1) 角度闭合差：Σβ - (n-2)·180°
   const sumBeta = obs.reduce((s, a) => s + a.original, 0);
   const sumBetaTheo = (n - 2) * 180;
   const fBeta = (sumBeta - sumBetaTheo) * 3600;            // 秒
@@ -187,10 +207,10 @@ export function calcClosedTraverse(params) {
   const fBetaOver = Math.abs(fBeta) > fBetaLimit;
 
   // 2) 改正 + 方位角
-  const { adjusted, azimuths, lastAz } = adjustAnglesAndAzimuths(
-    obs, startAzimuth, angleType, fBeta, integerMode, isStartPointMatching
+  const { adjusted, azimuths, lastAz, effectiveBacksight } = adjustAnglesAndAzimuths(
+    obs, startAzimuth, angleType, fBeta, integerMode, startAzBasis, n
   );
-  const azClosureErr = (lastAz - startAzimuth) * 3600;      // 应 ≈ 0
+  const azClosureErr = angleDiffSeconds(lastAz, effectiveBacksight);
 
   // 3) 增量
   const { incs, sumDx, sumDy, sumD } = computeIncrements(obs, azimuths, roundedMode);
@@ -204,16 +224,13 @@ export function calcClosedTraverse(params) {
   // 4) 分配闭合差
   const adjIncs = distributeClosure(incs, fx, fy, sumD, integerMode);
 
-  // 5) 坐标
+  // 5) 坐标：coords[0]=起点，coords[i+1]=边 i 到达点
   const coords = [{ name: startPoint.name, x: startPoint.x, y: startPoint.y }];
   let cx = startPoint.x, cy = startPoint.y;
   for (let i = 0; i < n; i++) {
     cx += adjIncs[i].adjustedDx;
     cy += adjIncs[i].adjustedDy;
-    let nextName = stations[i].name;
-    if (isStartPointMatching) {
-      nextName = (i === n - 1) ? startPoint.name : stations[i + 1].name;
-    }
+    const nextName = (i === n - 1) ? startPoint.name : stations[i + 1].name;
     coords.push({ name: nextName, x: cx, y: cy });
   }
 
@@ -231,59 +248,115 @@ export function calcClosedTraverse(params) {
 }
 
 /**
- * 附合导线
- * @param {Object} params
- * @param {{name:string, x:number, y:number}} params.startPoint
- * @param {number} params.startAzimuth
- * @param {{name:string, x:number, y:number}} params.endPoint
- * @param {number} params.endAzimuth
- * @param {'left'|'right'} params.angleType
- * @param {Array<{name:string, deg:number, min:number, sec:number, distance:number}>} params.stations
- * @param {number} [params.angleLimit]
- * @param {number} [params.kLimit]
+ * 附合导线（与最初 matching 逻辑一致 + 终点连接角）
+ * startAzBasis: 'backsight' 后视 | 'first' 首边
  */
 export function calcAttachedTraverse(params) {
   const {
-    startPoint, startAzimuth, endPoint, endAzimuth,
-    angleType, stations, angleLimit, kLimit, integerMode, isStartPointMatching, roundedMode
+    startPoint, startAzimuth, startAzBasis,
+    endPoint, endAzimuth, endConnAngle,
+    angleType, stations, angleLimit, kLimit, integerMode, roundedMode
   } = params;
 
   if (!Array.isArray(stations) || stations.length < 2) {
-    throw new Error('附合导线至少需要 2 个测站');
+    throw new Error('附合导线至少需要 2 个测站（含起点）');
   }
   if (angleType !== 'left' && angleType !== 'right') {
     throw new Error('angleType 必须是 "left" 或 "right"');
   }
 
   const n = stations.length;
-  const obs = stationsToDecimal(stations);
+  const obsStations = stationsToDecimal(stations);
+  const basis = startAzBasis === 'first' ? 'first' : 'backsight';
 
-  // 1) 角度闭合差
-  //   左角：fβ = α_起 + Σβ_左 - α_终 - n·180°
-  //   右角：fβ = α_起 - Σβ_右 - α_终 + n·180°
-  const sumBeta = obs.reduce((s, a) => s + a.original, 0);
+  let endConnDeg;
+  if (typeof endConnAngle === 'number') {
+    endConnDeg = endConnAngle;
+  } else if (endConnAngle && typeof endConnAngle === 'object') {
+    endConnDeg = dmsToDecimal(endConnAngle.deg, endConnAngle.min, endConnAngle.sec);
+  } else {
+    throw new Error('附合导线需要终点连接角 endConnAngle');
+  }
+
+  // 后视：全部站角 + 终点连接角参与改正
+  // 首边：首边已知 → 起点角不参与改正（与最初「旧模型/首边」一致）
+  const midAndEnd = [
+    ...obsStations.slice(basis === 'first' ? 1 : 0).map(a => ({ name: a.name, original: a.original })),
+    { name: endPoint.name, original: endConnDeg }
+  ];
+  const nAngles = midAndEnd.length;
+  const sumBeta = midAndEnd.reduce((s, a) => s + a.original, 0);
+  const alphaStart = normalize360(startAzimuth);
+
   let fBetaDeg;
   if (angleType === 'left') {
-    fBetaDeg = startAzimuth + sumBeta - endAzimuth - n * 180;
+    fBetaDeg = alphaStart + sumBeta - endAzimuth - nAngles * 180;
   } else {
-    fBetaDeg = startAzimuth - sumBeta - endAzimuth + n * 180;
+    fBetaDeg = alphaStart - sumBeta - endAzimuth + nAngles * 180;
   }
-  // 归一化到 (-180, 180] 这种范围内（理论上应该很小）
   fBetaDeg = ((fBetaDeg + 180) % 360 + 360) % 360 - 180;
   const fBeta = fBetaDeg * 3600;
-  const fBetaLimit = angleLimit ?? 40 * Math.sqrt(n);
-  const fBetaOver = Math.abs(fBetaDeg * 3600) > fBetaLimit;
+  const fBetaLimit = angleLimit ?? 40 * Math.sqrt(nAngles);
+  const fBetaOver = Math.abs(fBeta) > fBetaLimit;
 
-  // 2) 改正 + 方位角
-  const { adjusted, azimuths, lastAz } = adjustAnglesAndAzimuths(
-    obs, startAzimuth, angleType, fBetaDeg * 3600, integerMode, isStartPointMatching
-  );
-  const azClosureErr = (lastAz - endAzimuth) * 3600;       // 应 ≈ 0
+  let vArr;
+  if (integerMode) {
+    vArr = integerDistribute(-fBeta, 1, nAngles, midAndEnd.map(a => a.original));
+  } else {
+    const v = -fBeta / nAngles;
+    vArr = new Array(nAngles).fill(v);
+  }
+  const midAdjusted = midAndEnd.map((a, i) => ({
+    name: a.name,
+    original: a.original,
+    correction: vArr[i],
+    adjusted: a.original + vArr[i] / 3600
+  }));
 
-  // 3) 增量
-  const { incs, sumDx, sumDy, sumD } = computeIncrements(obs, azimuths, roundedMode);
+  let adjusted;
+  if (basis === 'first') {
+    adjusted = [
+      {
+        name: obsStations[0].name,
+        original: obsStations[0].original,
+        correction: 0,
+        adjusted: obsStations[0].original
+      },
+      ...midAdjusted
+    ];
+  } else {
+    adjusted = midAdjusted;
+  }
 
-  // 4) 坐标闭合差：从起点推算到终点的坐标 vs 已知终点坐标
+  const azimuths = [];
+  let cur;
+  if (basis === 'first') {
+    cur = normalize360(startAzimuth);
+    azimuths.push(cur);
+    for (let i = 0; i < n - 1; i++) {
+      const beta = midAdjusted[i].adjusted;
+      if (angleType === 'left') cur = normalize360(cur + beta - 180);
+      else cur = normalize360(cur - beta + 180);
+      azimuths.push(cur);
+    }
+  } else {
+    cur = normalize360(startAzimuth);
+    for (let i = 0; i < n; i++) {
+      const beta = midAdjusted[i].adjusted;
+      if (angleType === 'left') cur = normalize360(cur + beta - 180);
+      else cur = normalize360(cur - beta + 180);
+      azimuths.push(cur);
+    }
+  }
+
+  const endBetaAdj = midAdjusted[midAdjusted.length - 1].adjusted;
+  let lastAz;
+  if (angleType === 'left') lastAz = normalize360(cur + endBetaAdj - 180);
+  else lastAz = normalize360(cur - endBetaAdj + 180);
+  const azClosureErr = angleDiffSeconds(lastAz, endAzimuth);
+
+  const { incs, sumDx, sumDy, sumD } = computeIncrements(obsStations, azimuths, roundedMode);
+
   let endX = startPoint.x, endY = startPoint.y;
   for (let i = 0; i < n; i++) {
     endX += incs[i].dx;
@@ -296,27 +369,28 @@ export function calcAttachedTraverse(params) {
   const kLimitVal = kLimit ?? 1 / 2000;
   const kOver = k > kLimitVal;
 
-  // 5) 分配
   const adjIncs = distributeClosure(incs, fx, fy, sumD, integerMode);
 
-  // 6) 坐标
   const coords = [{ name: startPoint.name, x: startPoint.x, y: startPoint.y }];
   let cx = startPoint.x, cy = startPoint.y;
   for (let i = 0; i < n; i++) {
     cx += adjIncs[i].adjustedDx;
     cy += adjIncs[i].adjustedDy;
-    let nextName = stations[i].name;
-    if (isStartPointMatching) {
-      nextName = (i === n - 1) ? endPoint.name : stations[i + 1].name;
-    }
+    const nextName = (i === n - 1) ? endPoint.name : stations[i + 1].name;
     coords.push({ name: nextName, x: cx, y: cy });
   }
 
+  const endAdj = adjusted[adjusted.length - 1];
   return {
     adjustedAngles: adjusted,
     azimuths,
     increments: adjIncs,
     coordinates: coords,
+    endConnAngle: {
+      original: endAdj.original,
+      correction: endAdj.correction,
+      adjusted: endAdj.adjusted
+    },
     closure: {
       fBeta, fBetaLimit, fBetaOver,
       azimuthClosureError: azClosureErr,
@@ -326,6 +400,3 @@ export function calcAttachedTraverse(params) {
     }
   };
 }
-
-
-
