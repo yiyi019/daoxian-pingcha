@@ -201,6 +201,18 @@ body {
 .radio-group legend { padding: 0 8px 0 0; font-weight: 600; color: var(--text); }
 .radio-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .radio-group input[type="radio"] { width: 18px; height: 18px; accent-color: var(--primary); }
+.radio-group-stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.radio-group-stack legend {
+  margin-bottom: 2px;
+  padding: 0;
+}
+.radio-group-stack label {
+  width: 100%;
+}
 
 /* ── 表格 ───────────────────────────────── */
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -4px; }
@@ -1199,3 +1211,188 @@ body {
 
 [hidden] { display: none !important; }
 
+
+/* ═══════════════════════════════════════════
+   主题切换（仅 dark 覆盖，不改浅色默认观感）
+   ═══════════════════════════════════════════ */
+.theme-wrap { position: relative; }
+.theme-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 148px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: 4px;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.theme-menu[hidden] { display: none !important; }
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  min-height: 40px;
+}
+.theme-option:hover,
+.theme-option:active { background: var(--bg); }
+.theme-option.active {
+  background: #f0fdfa;
+  color: var(--primary-2);
+  font-weight: 600;
+}
+.theme-option .theme-ico { width: 1.25em; text-align: center; }
+
+/* 首站锁定名（功能样式，不改全局字号） */
+#stations-body .cell-name-locked {
+  background: #f1f5f9;
+  color: var(--primary-2);
+  font-weight: 600;
+  cursor: default;
+}
+.result-table .row-edge .edge-name {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ── 深色主题 ── */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b1220;
+  --surface: #111827;
+  --border: #334155;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --primary: #2dd4bf;
+  --primary-2: #5eead4;
+  --accent: #38bdf8;
+  --danger: #f87171;
+  --warn: #fbbf24;
+  --warn-bg: #422006;
+  --success: #4ade80;
+  --ok-bg: #14532d;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+html[data-theme="dark"] body { background: var(--bg); color: var(--text); }
+html[data-theme="dark"] .topbar,
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .mode-switch,
+html[data-theme="dark"] .compute-bar,
+html[data-theme="dark"] .modal-content,
+html[data-theme="dark"] .big-btn,
+html[data-theme="dark"] .theme-menu {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+html[data-theme="dark"] .sticky-bar { background: var(--bg); }
+html[data-theme="dark"] .form-field input,
+html[data-theme="dark"] .form-field select,
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] #stations-body input,
+html[data-theme="dark"] #distances-body input {
+  background: #0b1220;
+  color: var(--text);
+  border-color: var(--border);
+}
+html[data-theme="dark"] .form-field input:focus,
+html[data-theme="dark"] .form-field select:focus,
+html[data-theme="dark"] #stations-body input:focus,
+html[data-theme="dark"] #distances-body input:focus,
+html[data-theme="dark"] textarea:focus {
+  background: #1e293b;
+  border-color: var(--primary);
+}
+html[data-theme="dark"] .form-field input[readonly],
+html[data-theme="dark"] #stations-body .cell-name-locked {
+  background: #1e293b;
+  color: var(--text-muted);
+}
+html[data-theme="dark"] .data-table thead th {
+  background: linear-gradient(180deg, #1f2937 0%, #111827 100%);
+  color: var(--text-muted);
+}
+html[data-theme="dark"] .data-table .grp-angle,
+html[data-theme="dark"] .data-table .grp-corr {
+  background: #1f2937;
+  color: var(--primary-2);
+}
+html[data-theme="dark"] .result-table .row-point { background: #111827; }
+html[data-theme="dark"] .result-table .row-edge { background: #0f172a; color: var(--text-muted); }
+html[data-theme="dark"] .result-table tbody tr:hover { background: #172554 !important; }
+html[data-theme="dark"] .result-table .row-sum { background: #422006; color: #fde68a; }
+html[data-theme="dark"] .result-table .row-sum td { border-top-color: var(--border); }
+html[data-theme="dark"] .check-row {
+  background: #042f2e;
+  border-color: #115e59;
+  color: var(--text);
+}
+html[data-theme="dark"] .check-row:hover { background: #134e4a; }
+html[data-theme="dark"] .warning-bar {
+  background: var(--warn-bg);
+  border-color: #a16207;
+  color: #fde68a;
+}
+html[data-theme="dark"] .reverse-panel {
+  background: #042f2e;
+  border-color: #0f766e;
+}
+html[data-theme="dark"] .closure-item { background: #0b1220; }
+html[data-theme="dark"] .closure-item:has(b.over) { background: #3f1d1d; }
+html[data-theme="dark"] .closure-item:has(b.ok) { background: var(--ok-bg); }
+html[data-theme="dark"] .sketch-wrap { background: #0f172a; }
+html[data-theme="dark"] .modal-backdrop { background: rgba(0, 0, 0, 0.65); }
+html[data-theme="dark"] .mode-btn.active {
+  background: var(--primary);
+  color: #042f2e;
+}
+html[data-theme="dark"] .btn-compute {
+  background: var(--primary);
+  color: #042f2e;
+}
+html[data-theme="dark"] .btn-compute.dirty {
+  background: var(--warn);
+  color: #422006;
+}
+html[data-theme="dark"] .proj-actions .btn-load,
+html[data-theme="dark"] .link-btn.active {
+  background: var(--primary);
+  color: #042f2e;
+  border-color: var(--primary);
+}
+html[data-theme="dark"] .theme-option.active {
+  background: #042f2e;
+  color: var(--primary-2);
+}
+html[data-theme="dark"] .theme-menu { background: #1f2937; }
+html[data-theme="dark"] .tool-btn,
+html[data-theme="dark"] .tool-btn-sm,
+html[data-theme="dark"] .btn-back,
+html[data-theme="dark"] .big-btn {
+  background: #1f2937;
+  color: var(--text);
+  border-color: var(--border);
+}
+html[data-theme="dark"] .btn-del:active { background: #7f1d1d; }
+html[data-theme="dark"] .point-item .point-name.control { color: #f87171; }
+html[data-theme="dark"] .point-item .point-name.detail { color: #60a5fa; }
+html[data-theme="dark"] .input-column::-webkit-scrollbar-thumb,
+html[data-theme="dark"] .plotter-side-col::-webkit-scrollbar-thumb {
+  background: #475569;
+}

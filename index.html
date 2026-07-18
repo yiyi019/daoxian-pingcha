@@ -3,15 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#0f766e">
+  <meta name="theme-color" content="#0f766e" id="meta-theme-color">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" id="meta-status-bar">
   <meta name="apple-mobile-web-app-title" content="导线平差">
   <title>导线平差计算</title>
   <meta name="description" content="闭合/附合导线测量内业平差计算工具，支持左角/右角、度分秒输入、整数修正模式，可离线使用的 PWA 应用。">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/svg+xml" href="assets/icon-192.svg">
   <link rel="stylesheet" href="css/style.css">
+  <script>
+    (function () {
+      try {
+        var pref = localStorage.getItem('traverse-calc:theme') || 'system';
+        var dark = pref === 'dark' || (pref === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        document.documentElement.dataset.themePref = pref;
+      } catch (e) {
+        document.documentElement.dataset.theme = 'light';
+        document.documentElement.dataset.themePref = 'system';
+      }
+    })();
+  </script>
 </head>
 <body>
   <header class="topbar">
@@ -21,6 +34,14 @@
       <button id="btn-save"  class="icon-btn" title="保存" aria-label="保存">💾</button>
       <button id="btn-load"  class="icon-btn" title="载入" aria-label="载入">📂</button>
       <button id="btn-export" class="icon-btn" title="导出" aria-label="导出">📤</button>
+      <div class="theme-wrap">
+        <button id="btn-theme" class="icon-btn" type="button" title="主题" aria-label="切换主题" aria-haspopup="menu" aria-expanded="false">🌓</button>
+        <div id="theme-menu" class="theme-menu" role="menu" hidden>
+          <button type="button" class="theme-option" data-theme-pref="light" role="menuitem"><span class="theme-ico">☀️</span>浅色</button>
+          <button type="button" class="theme-option" data-theme-pref="dark" role="menuitem"><span class="theme-ico">🌙</span>深色</button>
+          <button type="button" class="theme-option" data-theme-pref="system" role="menuitem"><span class="theme-ico">💻</span>跟随系统</button>
+        </div>
+      </div>
       <button id="btn-help"  class="icon-btn" title="帮助" aria-label="帮助">❓</button>
     </nav>
   </header>
@@ -67,9 +88,15 @@
           </div>
         </div>
 
+        <fieldset class="radio-group radio-group-stack" id="start-az-basis-row">
+          <legend>方位角含义</legend>
+          <label><input type="radio" name="start_az_basis" value="backsight" checked> 后视方位角 <small class="hint">α(已知→起点)</small></label>
+          <label><input type="radio" name="start_az_basis" value="first"> 首边方位角 <small class="hint">α(起点→下一站)</small></label>
+        </fieldset>
+
         <div class="az-block-row" id="start-manual-panel">
           <label class="form-field dms-field az-block-input">
-            <span>直接输入起始方位角</span>
+            <span id="start-az-label">起始方位角（后视）</span>
             <div class="dms-input" id="start-az-dms-row">
               <input type="number" id="start-az-d" inputmode="numeric" placeholder="°">
               <span>°</span>
@@ -169,6 +196,20 @@
             </div>
           </div>
         </div>
+
+        <div class="az-block" style="margin-top: 12px;">
+          <label class="form-field dms-field">
+            <span>终点连接角 β<sub>E</sub> <small class="hint">终点处观测角（必填）</small></span>
+            <div class="dms-input" id="end-conn-dms-row">
+              <input type="number" id="end-conn-d" inputmode="numeric" placeholder="°">
+              <span>°</span>
+              <input type="number" id="end-conn-m" inputmode="numeric" placeholder="′">
+              <span>′</span>
+              <input type="number" id="end-conn-s" step="0.01" inputmode="decimal" placeholder="″">
+              <span>″</span>
+            </div>
+          </label>
+        </div>
       </div>
 
       <div class="form-row">
@@ -205,9 +246,9 @@
       </label>
     </section>
 
-    <!-- 测站角度表（点号 + β，不含边长） -->
+    <!-- 测站角度表（点号 + β，不含边长）；首行固定为起点 -->
     <section class="card">
-      <h2 class="card-title">测站角度表 <small class="hint">行可增减</small></h2>
+      <h2 class="card-title">测站角度表 <small class="hint">首行=起点，边长=离开该点</small></h2>
       <div class="table-scroll">
         <table class="data-table">
           <thead>
@@ -623,11 +664,11 @@
           <li>点底部 <b>「🚀 计算」</b> 按钮 → 下方出现结果表、闭合差、略图</li>
           <li>改任何输入后，底部按钮会变橙提示「已修改 · 点此重算」</li>
         </ol>
-        <h3>起算方位角输入方式</h3>
+        <h3>起算方位角</h3>
         <ul>
-          <li><b>度分秒</b>（默认）：° ′ ″ 三栏，秒支持小数</li>
-          <li><b>十进制</b>：点「⇄ 十进制」切换，单个输入框直接输小数度（如 <code>96.86</code>）</li>
-          <li><b>反算</b>：点「📐 反算」展开，填入另一个已知点 B 的坐标，<b>自动用 atan2 算出 α_AB</b>（X=北, Y=东 约定下：α = atan2(ΔY, ΔX)）。附合模式终边同理：填 C→D 反算 α_CD</li>
+          <li><b>后视方位角</b>（默认）：α(已知后视点 → 起点)。选「已知点坐标反算」时自动用 atan2 计算</li>
+          <li><b>首边方位角</b>：α(起点 → 下一站)，作业表直接给 α_AB 时用这个</li>
+          <li>度分秒 / 十进制两种输入格式可切换</li>
         </ul>
         <h3>角度类型</h3>
         <ul>
@@ -636,11 +677,10 @@
         </ul>
         <h3>测站表 vs 边长表</h3>
         <ul>
-          <li><b>测站角度表</b>：每个测站一行（点号 + ° ′ ″），<b>不含边长</b></li>
-          <li><b>边长表</b>：每条边一行（起点 → 终点 + 边长），<b>独立于点号</b></li>
-          <li>闭合导线：第 n 行标签自动是 "最后一个点 → 起点"（闭合边）</li>
-          <li>附合导线：第 n 行标签自动是 "最后一个点 → 终点"（终止边）</li>
-          <li>改「测站角度表」里的点号，边长表的标签会自动跟着变</li>
+          <li><b>统一模型</b>：首行固定为起点（名称随「起点名」同步），每行观测角 = 该点处转角</li>
+          <li><b>边长</b> = 离开该点的水平距离（标签「A → B」）</li>
+          <li>闭合：最后一边自动回到起点</li>
+          <li>附合：最后一边到终点；须另填<strong>终点连接角 β<sub>E</sub></strong>（终点处观测角）</li>
         </ul>
         <h3>闭合差</h3>
         <ul>
@@ -655,9 +695,9 @@
           <li><b>vx / vy</b>：整数模式 3 位小数（1mm）；小数模式 4 位小数</li>
           <li>例：fβ=-25″，4 角 → vβ=[+7, +6, +6, +6]（最大 |β| 拿 +1 秒）</li>
         </ul>
-        <h3>结果表列结构（12 列）</h3>
-        <p><b>角度组</b>：观测角 ｜ <b>v_β</b> ｜ 改正后 ｜ 方位角</p>
-        <p><b>边长 / 改正数 / 坐标</b>：边长 ｜ <b>X'</b> ｜ <b>Y'</b> ｜ vx ｜ vy ｜ <b>ΔX</b> ｜ <b>ΔY</b> ｜ X ｜ Y</p>
+        <h3>结果表列结构（14 列，点/边交错行）</h3>
+        <p><b>点行</b>：点名 ｜ 观测角 ｜ <b>v_β</b> ｜ 改正后 ｜ … ｜ X ｜ Y</p>
+        <p><b>边行</b>：边名 ｜ 方位角 ｜ 边长 ｜ <b>X'</b> ｜ <b>Y'</b> ｜ vx ｜ vy ｜ <b>ΔX</b> ｜ <b>ΔY</b></p>
         <ul>
           <li><b>v_β</b>：角度改正数（带符号，整数模式整秒 / 小数模式 1 位）</li>
           <li><b>X' / Y'</b>：<b>未修正</b>的坐标增量（带撇 = 调整前）</li>
