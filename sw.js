@@ -1,5 +1,5 @@
 // Service Worker - 离线缓存
-const CACHE = 'traverse-calc-v33';
+const CACHE = 'traverse-calc-v42';
 const ASSETS = [
   './',
   './index.html',
@@ -30,19 +30,39 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+// HTML/JS/CSS：网络优先，避免主题等更新被旧缓存挡住；失败再回退缓存
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
-  e.respondWith(
-    caches.match(e.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(e.request).then((resp) => {
-        // 缓存新资源（同源）
-        if (resp.ok && new URL(e.request.url).origin === location.origin) {
+  const url = new URL(e.request.url);
+  if (url.origin !== location.origin) return;
+
+  const path = url.pathname;
+  const isShell = path.endsWith('.html') || path.endsWith('/') ||
+    path.endsWith('.js') || path.endsWith('.css') || path.endsWith('sw.js');
+
+  if (isShell) {
+    e.respondWith(
+      fetch(e.request).then((resp) => {
+        if (resp.ok) {
           const clone = resp.clone();
           caches.open(CACHE).then((c) => c.put(e.request, clone));
         }
         return resp;
-      }).catch(() => cached);
+      }).catch(() => caches.match(e.request).then((c) => c || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  e.respondWith(
+    caches.match(e.request).then((cached) => {
+      if (cached) return cached;
+      return fetch(e.request).then((resp) => {
+        if (resp.ok) {
+          const clone = resp.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, clone));
+        }
+        return resp;
+      });
     })
   );
 });
