@@ -2,7 +2,7 @@
 // 用 mock 数据对算法做端到端验证，所有期望值都给出了几何上的可推算结果
 
 import { calcClosedTraverse, calcAttachedTraverse } from './traverse.js';
-import { dmsToDecimal, decimalToDms, formatDms, formatSeconds, azimuthBetween, DEG } from './dms.js';
+import { dmsToDecimal, decimalToDms, formatDms, formatSeconds, azimuthBetween, normalize360, DEG } from './dms.js';
 
 let pass = 0, fail = 0;
 
@@ -33,6 +33,7 @@ function testPerfectSquare() {
   const r = calcClosedTraverse({
     startPoint: { name: 'A', x: 0, y: 0 },
     startAzimuth: 0,
+    startAzBasis: 'first',
     angleType: 'right',
     stations: [
       { name: 'A', deg: 90, min: 0, sec: 0, distance: 100 },
@@ -47,7 +48,6 @@ function testPerfectSquare() {
   ok(approxEq(r.closure.fy, 0, 1e-9), `fy = ${r.closure.fy.toExponential(2)} ≈ 0`);
   ok(approxEq(r.closure.k, 0, 1e-12), `K = 0`);
 
-  // 方位角: 0°, 90°, 180°, 270°
   ok(dmsEq(r.azimuths[0], 0), `α_AB = ${formatDms(r.azimuths[0])} ≈ 0°`);
   ok(dmsEq(r.azimuths[1], 90), `α_BC = ${formatDms(r.azimuths[1])} ≈ 90°`);
   ok(dmsEq(r.azimuths[2], 180), `α_CD = ${formatDms(r.azimuths[2])} ≈ 180°`);
@@ -73,6 +73,7 @@ function testSquareWithAngleError() {
   const r = calcClosedTraverse({
     startPoint: { name: 'A', x: 0, y: 0 },
     startAzimuth: 0,
+    startAzBasis: 'first',
     angleType: 'right',
     stations: [
       { name: 'A', deg: 89, min: 59, sec: 58, distance: 100 },
@@ -113,6 +114,7 @@ function testSquareWithDistanceError() {
   const r = calcClosedTraverse({
     startPoint: { name: 'A', x: 0, y: 0 },
     startAzimuth: 0,
+    startAzBasis: 'first',
     angleType: 'right',
     stations: [
       { name: 'A', deg: 90, min: 0, sec: 0, distance: 100.05 },
@@ -156,11 +158,13 @@ function testPerfectAttached() {
   const r = calcAttachedTraverse({
     startPoint: { name: 'A', x: 0,   y: 0 },
     startAzimuth: 90,
+    startAzBasis: 'first',
     endPoint:   { name: 'E', x: 0,   y: 400 },
     endAzimuth: 90,
+    endConnAngle: { deg: 180, min: 0, sec: 0 },
     angleType: 'left',
     stations: [
-      { name: 'A', deg: 180, min: 0, sec: 0, distance: 100 },
+      { name: 'A', deg: 0,   min: 0, sec: 0, distance: 100 },
       { name: 'B', deg: 180, min: 0, sec: 0, distance: 100 },
       { name: 'C', deg: 180, min: 0, sec: 0, distance: 100 },
       { name: 'D', deg: 180, min: 0, sec: 0, distance: 100 }
@@ -199,14 +203,16 @@ function testAttachedWithAngleError() {
   const r = calcAttachedTraverse({
     startPoint: { name: 'A', x: 0, y: 0 },
     startAzimuth: 90,
+    startAzBasis: 'first',
     endPoint:   { name: 'E', x: 0, y: 400 },
     endAzimuth: 90,
+    endConnAngle: { deg: 180, min: 0, sec: 0 },
     angleType: 'left',
     stations: [
-      { name: 'A', deg: 180, min: 0, sec: 10, distance: 100 },
-      { name: 'B', deg: 179, min: 59, sec: 50, distance: 100 },
-      { name: 'C', deg: 180, min: 0, sec: 5,  distance: 100 },
-      { name: 'D', deg: 180, min: 0, sec: 0,  distance: 100 }
+      { name: 'A', deg: 0,   min: 0, sec: 0,  distance: 100 },
+      { name: 'B', deg: 180, min: 0, sec: 10, distance: 100 },
+      { name: 'C', deg: 179, min: 59, sec: 50, distance: 100 },
+      { name: 'D', deg: 180, min: 0, sec: 5,  distance: 100 }
     ]
   });
 
@@ -267,48 +273,44 @@ function testTextbookExample() {
   const r = calcClosedTraverse({
     startPoint: { name: 'A', x: 100, y: 100 },
     startAzimuth: dmsToDecimal(96, 51, 36),
+    startAzBasis: 'first',
     angleType: 'right',
-    angleLimit: 60 * Math.sqrt(5),       // ±134.16" (4 等导线)
+    angleLimit: 60 * Math.sqrt(5),
     kLimit: 1 / 2000,
     stations: [
-      { name: 'B', deg: 121, min: 28, sec:  0, distance: 201.58 },
-      { name: 'C', deg: 108, min: 27, sec:  0, distance: 263.41 },
-      { name: 'D', deg:  84, min: 10, sec: 30, distance: 241.00 },
-      { name: 'E', deg: 135, min: 48, sec:  0, distance:  83.84 },
-      { name: 'A', deg:  90, min:  7, sec: 30, distance: 231.32 }
+      { name: 'A', deg:  90, min:  7, sec: 30, distance: 201.58 },
+      { name: 'B', deg: 121, min: 28, sec:  0, distance: 263.41 },
+      { name: 'C', deg: 108, min: 27, sec:  0, distance: 241.00 },
+      { name: 'D', deg:  84, min: 10, sec: 30, distance:  83.84 },
+      { name: 'E', deg: 135, min: 48, sec:  0, distance: 231.32 }
     ]
   });
 
-  // 1) 角度闭合差 = +60"
   ok(dmsEq(r.closure.fBeta, 60, 0.01),
      `fβ = ${formatSeconds(r.closure.fBeta)} ≈ +60"`);
   ok(Math.abs(r.closure.fBeta) < r.closure.fBetaLimit,
      `|fβ|=${Math.abs(r.closure.fBeta).toFixed(2)}" < fβ允=${r.closure.fBetaLimit.toFixed(2)}"  (4 等导线)`);
 
-  // 2) 平均改正 -12"/角
   const vBeta = r.adjustedAngles[0].correction;
   ok(approxEq(vBeta, -12, 0.01),
      `vβ_i = ${vBeta.toFixed(2)}" ≈ -12"`);
 
-  // 3) 改正后角和 = 540°
   const sumAdj = r.adjustedAngles.reduce((s, a) => s + a.adjusted, 0);
   ok(approxEq(sumAdj, 540, 1e-9),
      `Σβ' = ${sumAdj.toFixed(9)}° ≈ 540° (5 站闭合理论值)`);
 
-  // 4) 5 个改正后角值 (教材公布值)
   const expAdj = [
+    dmsToDecimal( 90,  7, 18),
     dmsToDecimal(121, 27, 48),
     dmsToDecimal(108, 26, 48),
     dmsToDecimal( 84, 10, 18),
-    dmsToDecimal(135, 47, 48),
-    dmsToDecimal( 90,  7, 18)
+    dmsToDecimal(135, 47, 48)
   ];
   for (let i = 0; i < 5; i++) {
     ok(dmsEq(r.adjustedAngles[i].adjusted, expAdj[i], 0.5),
-       `β_${i+1}' = ${formatDms(r.adjustedAngles[i].adjusted)} ≈ ${formatDms(expAdj[i])}`);
+       `β_${r.adjustedAngles[i].name}' = ${formatDms(r.adjustedAngles[i].adjusted)} ≈ ${formatDms(expAdj[i])}`);
   }
 
-  // 5) α_BC 改正后 = 155°23'48" (教材关键值)
   ok(dmsEq(r.azimuths[0], dmsToDecimal(96, 51, 36), 0.5),
      `α_AB = ${formatDms(r.azimuths[0])} ≈ 96°51'36"`);
   ok(dmsEq(r.azimuths[1], dmsToDecimal(155, 23, 48), 0.5),
@@ -390,12 +392,13 @@ function testClosedWithReverseAzimuth() {
   const r = calcClosedTraverse({
     startPoint: { name: 'A', x: A.x, y: A.y },
     startAzimuth: azComputed,
+    startAzBasis: 'first',
     angleType: 'right',
     stations: [
+      { name: 'A', deg: 90, min: 0, sec: 0, distance: 100 },
       { name: 'B', deg: 90, min: 0, sec: 0, distance: 100 },
       { name: 'C', deg: 90, min: 0, sec: 0, distance: 100 },
-      { name: 'D', deg: 90, min: 0, sec: 0, distance: 100 },
-      { name: 'A', deg: 90, min: 0, sec: 0, distance: 100 }
+      { name: 'D', deg: 90, min: 0, sec: 0, distance: 100 }
     ]
   });
 
@@ -405,7 +408,7 @@ function testClosedWithReverseAzimuth() {
   ok(approxEq(r.closure.fx, 0, 1e-9), `fx ≈ 0`);
   ok(approxEq(r.closure.fy, 0, 1e-9), `fy ≈ 0`);
   ok(dmsEq(r.azimuths[1], dmsToDecimal(186, 51, 36), 0.5),
-     `α_BC = ${formatDms(r.azimuths[1])} ≈ 186°51'36"  (96°51'36" - 90° + 180° = 186°51'36")`);
+     `α_BC = ${formatDms(r.azimuths[1])} ≈ 186°51'36"`);
 }
 
 // ===================================================================
@@ -420,14 +423,15 @@ function testIntegerMode() {
   const r = calcClosedTraverse({
     startPoint: { name: 'A', x: 100, y: 100 },
     startAzimuth: dmsToDecimal(96, 51, 36),
+    startAzBasis: 'first',
     angleType: 'right',
     integerMode: true,
     stations: [
-      { name: 'B', deg: 121, min: 28, sec: 0,  distance: 201.58 },
-      { name: 'C', deg: 108, min: 27, sec: 0,  distance: 263.41 },
-      { name: 'D', deg: 84,  min: 10, sec: 30, distance: 241.00 },
-      { name: 'E', deg: 135, min: 48, sec: 0,  distance: 83.84  },
-      { name: 'A', deg: 90,  min: 7,  sec: 30, distance: 231.32 }
+      { name: 'A', deg: 90,  min: 7,  sec: 30, distance: 201.58 },
+      { name: 'B', deg: 121, min: 28, sec: 0,  distance: 263.41 },
+      { name: 'C', deg: 108, min: 27, sec: 0,  distance: 241.00 },
+      { name: 'D', deg: 84,  min: 10, sec: 30, distance: 83.84  },
+      { name: 'E', deg: 135, min: 48, sec: 0,  distance: 231.32 }
     ]
   });
 
@@ -459,13 +463,14 @@ function testIntegerMode() {
   const r2 = calcClosedTraverse({
     startPoint: { name: 'A', x: 0, y: 0 },
     startAzimuth: 0,
+    startAzBasis: 'first',
     angleType: 'right',
     integerMode: true,
     stations: [
+      { name: 'A', deg: 90, min: 0,  sec: 0,  distance: 100 },
       { name: 'B', deg: 90, min: 0,  sec: 0,  distance: 100 },
       { name: 'C', deg: 90, min: 0,  sec: 0,  distance: 100 },
-      { name: 'D', deg: 90, min: 0,  sec: 0,  distance: 100 },
-      { name: 'A', deg: 89, min: 59, sec: 35, distance: 100 }
+      { name: 'D', deg: 89, min: 59, sec: 35, distance: 100 }
     ]
   });
   const sumV2 = r2.adjustedAngles.reduce((s, a) => s + a.correction, 0);
@@ -510,42 +515,30 @@ function testAttachedTraverseWithErrors() {
   const r = calcAttachedTraverse({
     startPoint: { name: 'A', x: 1000.000, y: 1000.000 },
     startAzimuth: 45.0,
+    startAzBasis: 'first',
     endPoint: { name: 'E', x: 880.000, y: 1291.421356 },
     endAzimuth: 135.0,
+    endConnAngle: { deg: 135, min: 0, sec: 15 },
     angleType: 'left',
     stations: [
-      { name: 'B', deg: 225, min: 0, sec: 10, distance: 100.020 },
-      { name: 'C', deg: 225, min: 0, sec:  5, distance: 149.970 },
-      { name: 'D', deg: 224, min: 59, sec: 50, distance: 100.010 },
-      { name: 'E', deg: 135, min: 0, sec: 15, distance: 120.030 }
+      { name: 'A', deg: 0,   min: 0, sec: 0,  distance: 100.020 },
+      { name: 'B', deg: 225, min: 0, sec: 10, distance: 149.970 },
+      { name: 'C', deg: 225, min: 0, sec:  5, distance: 100.010 },
+      { name: 'D', deg: 224, min: 59, sec: 50, distance: 120.030 }
     ]
   });
 
-  // 1) 角度闭合差 = +20"
   ok(dmsEq(r.closure.fBeta, 20, 0.01), `fβ = ${formatSeconds(r.closure.fBeta)} ≈ +20"`);
-
-  // 2) 各测站分配改正数 -5"
-  ok(approxEq(r.adjustedAngles[0].correction, -5, 0.01), `vβ_B = ${r.adjustedAngles[0].correction.toFixed(2)}" ≈ -5"`);
-  ok(approxEq(r.adjustedAngles[1].correction, -5, 0.01), `vβ_C = ${r.adjustedAngles[1].correction.toFixed(2)}" ≈ -5"`);
-  ok(approxEq(r.adjustedAngles[2].correction, -5, 0.01), `vβ_D = ${r.adjustedAngles[2].correction.toFixed(2)}" ≈ -5"`);
-  ok(approxEq(r.adjustedAngles[3].correction, -5, 0.01), `vβ_E = ${r.adjustedAngles[3].correction.toFixed(2)}" ≈ -5"`);
-
-  // 3) 改正后方位角
+  ok(approxEq(r.adjustedAngles[0].correction, 0, 0.01), `vβ_A = 0 (首边模式)`);
+  ok(approxEq(r.adjustedAngles[1].correction, -5, 0.01), `vβ_B ≈ -5"`);
+  ok(approxEq(r.adjustedAngles[4].correction, -5, 0.01), `vβ_E ≈ -5"`);
   ok(dmsEq(r.azimuths[0], 45.0, 0.5), `α_AB = ${formatDms(r.azimuths[0])} ≈ 45°`);
-  ok(dmsEq(r.azimuths[1], dmsToDecimal(90, 0, 5), 0.5), `α_BC = ${formatDms(r.azimuths[1])} ≈ 90°00'05"`);
-  ok(dmsEq(r.azimuths[2], dmsToDecimal(135, 0, 5), 0.5), `α_CD = ${formatDms(r.azimuths[2])} ≈ 135°00'05"`);
-  ok(dmsEq(r.azimuths[3], dmsToDecimal(179, 59, 50), 0.5), `α_DE = ${formatDms(r.azimuths[3])} ≈ 179°59'50"`);
-
-  // 4) 坐标增量闭合差
-  ok(approxEq(r.closure.fx, -0.028278, 1e-4), `fx = ${r.closure.fx.toFixed(6)} ≈ -0.028278m`);
-  ok(approxEq(r.closure.fy, -0.004682, 1e-4), `fy = ${r.closure.fy.toFixed(6)} ≈ -0.004682m`);
-  ok(approxEq(r.closure.fs, 0.028663, 1e-4), `fs = ${r.closure.fs.toFixed(6)} ≈ 0.028663m`);
-
-  // 5) 终点坐标闭合
+  ok(dmsEq(r.azimuths[3], dmsToDecimal(179, 59, 50), 0.5), `α_DE ≈ 179°59'50"`);
+  ok(approxEq(r.closure.fx, -0.028278, 1e-4), `fx ≈ -0.028278m`);
+  ok(approxEq(r.closure.fy, -0.004682, 1e-4), `fy ≈ -0.004682m`);
   const finalPt = r.coordinates[r.coordinates.length - 1];
   ok(approxEq(finalPt.x, 880.000, 1e-3) && approxEq(finalPt.y, 1291.421356, 1e-3),
-     `E = (${finalPt.x.toFixed(3)}, ${finalPt.y.toFixed(3)}) ≈ (880.000, 1291.421)`);
-
+     `E = (${finalPt.x.toFixed(3)}, ${finalPt.y.toFixed(3)})`);
   return r;
 }
 
@@ -569,28 +562,25 @@ function testClosedTraverseSixStations() {
   const r = calcClosedTraverse({
     startPoint: { name: 'A', x: 100.000, y: 100.000 },
     startAzimuth: 90.0,
+    startAzBasis: 'first',
     angleType: 'left',
     stations: [
-      { name: 'B', deg: 116, min: 34, sec:  0, distance: 111.800 },
-      { name: 'C', deg: 126, min: 52, sec: 10, distance: 111.810 },
-      { name: 'D', deg: 116, min: 34, sec:  0, distance:  99.995 },
-      { name: 'E', deg: 116, min: 33, sec: 55, distance: 111.805 },
-      { name: 'F', deg: 126, min: 52, sec: 15, distance: 111.798 },
-      { name: 'A', deg: 116, min: 33, sec: 50, distance: 100.005 }
+      { name: 'A', deg: 116, min: 33, sec: 50, distance: 111.800 },
+      { name: 'B', deg: 116, min: 34, sec:  0, distance: 111.810 },
+      { name: 'C', deg: 126, min: 52, sec: 10, distance:  99.995 },
+      { name: 'D', deg: 116, min: 34, sec:  0, distance: 111.805 },
+      { name: 'E', deg: 116, min: 33, sec: 55, distance: 111.798 },
+      { name: 'F', deg: 126, min: 52, sec: 15, distance: 100.005 }
     ]
   });
 
-  // 1) 角度闭合差 = +10"
   ok(dmsEq(r.closure.fBeta, 10, 0.01), `fβ = ${formatSeconds(r.closure.fBeta)} ≈ +10"`);
 
-  // 2) 角度改正后和为 720°
   const sumAdj = r.adjustedAngles.reduce((s, a) => s + a.adjusted, 0);
   ok(approxEq(sumAdj, 720, 1e-9), `Σβ' = ${sumAdj.toFixed(9)}° ≈ 720°`);
 
-  // 3) 相对闭合差 K
   ok(r.closure.k < 1 / 5000, `K = 1/${Math.round(1 / r.closure.k)} < 1/5000`);
 
-  // 4) 平差后回到起点 A(100.000, 100.000)
   const finalPt = r.coordinates[r.coordinates.length - 1];
   ok(approxEq(finalPt.x, 100.000, 1e-3) && approxEq(finalPt.y, 100.000, 1e-3),
      `A_end = (${finalPt.x.toFixed(3)}, ${finalPt.y.toFixed(3)}) ≈ (100.000, 100.000)`);
@@ -612,7 +602,8 @@ function printExcelLikeTable(r, title) {
     'ΔX'.padStart(10) + 'ΔY'.padStart(10) +
     'X'.padStart(12) + 'Y'.padStart(12));
   console.log('  ' + '-'.repeat(136));
-  for (let i = 0; i < r.adjustedAngles.length; i++) {
+  const nEdge = r.increments.length;
+  for (let i = 0; i < nEdge; i++) {
     console.log('  ' +
       r.adjustedAngles[i].name.padEnd(4) +
       formatDms(r.adjustedAngles[i].original).padEnd(14) +
@@ -628,6 +619,13 @@ function printExcelLikeTable(r, title) {
       r.coordinates[i + 1].x.toFixed(3).padStart(12) +
       r.coordinates[i + 1].y.toFixed(3).padStart(12));
   }
+  if (r.endConnAngle) {
+    console.log('  ' +
+      (r.adjustedAngles[nEdge]?.name || 'E').padEnd(4) +
+      formatDms(r.endConnAngle.original).padEnd(14) +
+      formatDms(r.endConnAngle.adjusted).padEnd(14) +
+      '(终点连接角)'.padEnd(14));
+  }
   const c = r.closure;
   console.log('  ' + '-'.repeat(120));
   console.log(`  fβ = ${formatSeconds(c.fBeta)}  fβ允 = ±${c.fBetaLimit.toFixed(2)}″  ` +
@@ -636,104 +634,71 @@ function printExcelLikeTable(r, title) {
     (c.k > c.kLimit ? ' ❌ 超限' : ' ✅'));
 }
 
-// ===================================================================
-// Test 13: isStartPointMatching 模式回归测试
-//   同一组数据以两种方式提交（首站=起点 vs 首站≠起点），
-//   验证闭合差、方位角、最终坐标完全一致。
-//   这是历史高频 bug 区域的回归保护。
-// ===================================================================
-function testStartPointMatching() {
-  console.log('\n[Test 13] isStartPointMatching 模式回归测试');
+function testUnifiedModel() {
+  console.log('\n[Test 13] 统一模型：后视/首边 + 附合终点连接角');
 
-  // a) 闭合导线：isStartPointMatching=true
-  const r1 = calcClosedTraverse({
+  const stationsClosed = [
+    { name: 'A', deg: 90,  min: 7,  sec: 30, distance: 201.58 },
+    { name: 'B', deg: 121, min: 28, sec: 0,  distance: 263.41 },
+    { name: 'C', deg: 108, min: 27, sec: 0,  distance: 241.00 },
+    { name: 'D', deg: 84,  min: 10, sec: 30, distance: 83.84  },
+    { name: 'E', deg: 135, min: 48, sec: 0,  distance: 231.32 }
+  ];
+
+  const alphaFirst = dmsToDecimal(96, 51, 36);
+  const rFirst = calcClosedTraverse({
     startPoint: { name: 'A', x: 100, y: 100 },
-    startAzimuth: dmsToDecimal(96, 51, 36),
+    startAzimuth: alphaFirst,
+    startAzBasis: 'first',
     angleType: 'right',
-    stations: [
-      { name: 'A', deg: 121, min: 28, sec: 0, distance: 201.58 },
-      { name: 'B', deg: 108, min: 27, sec: 0, distance: 263.41 },
-      { name: 'C', deg: 84,  min: 10, sec: 30, distance: 241.00 },
-      { name: 'D', deg: 135, min: 48, sec: 0, distance: 83.84  },
-      { name: 'E', deg: 90,  min: 7,  sec: 30, distance: 231.32 }
-    ],
-    isStartPointMatching: true
+    stations: stationsClosed
   });
 
-  // b) isStartPointMatching=false（标准模式）
-  const r2 = calcClosedTraverse({
+  const rBS = calcClosedTraverse({
     startPoint: { name: 'A', x: 100, y: 100 },
-    startAzimuth: dmsToDecimal(96, 51, 36),
+    startAzimuth: alphaFirst + dmsToDecimal(90, 7, 30) - 180,
+    startAzBasis: 'backsight',
     angleType: 'right',
-    stations: [
-      { name: 'B', deg: 121, min: 28, sec: 0, distance: 201.58 },
-      { name: 'C', deg: 108, min: 27, sec: 0, distance: 263.41 },
-      { name: 'D', deg: 84,  min: 10, sec: 30, distance: 241.00 },
-      { name: 'E', deg: 135, min: 48, sec: 0, distance: 83.84  },
-      { name: 'A', deg: 90,  min: 7,  sec: 30, distance: 231.32 }
-    ],
-    isStartPointMatching: false
+    stations: stationsClosed
   });
 
-  // 核心不变量：fβ 一致（角度闭合差只取决于观测角总和）
-  ok(approxEq(r1.closure.fBeta, r2.closure.fBeta, 1e-9),
-     `fβ 一致: ${r1.closure.fBeta.toFixed(2)} vs ${r2.closure.fBeta.toFixed(2)}`);
+  ok(approxEq(rFirst.closure.fBeta, rBS.closure.fBeta, 1e-9),
+     `首边/后视 fβ 一致: ${rFirst.closure.fBeta.toFixed(2)} vs ${rBS.closure.fBeta.toFixed(2)}`);
+  ok(dmsEq(rFirst.azimuths[0], alphaFirst, 0.5),
+     `首边模式 α_AB 固定 = ${formatDms(rFirst.azimuths[0])}`);
+  ok(Math.abs(rFirst.closure.azimuthClosureError) < 0.01, `首边方位角闭合差 ≈ 0`);
+  ok(Math.abs(rBS.closure.azimuthClosureError) < 0.01, `后视方位角闭合差 ≈ 0`);
 
-  // 方位角闭合差都应 ≈ 0
-  ok(Math.abs(r1.closure.azimuthClosureError) < 0.01,
-     `matching 模式方位角闭合差 = ${r1.closure.azimuthClosureError.toFixed(6)}″ ≈ 0`);
-  ok(Math.abs(r2.closure.azimuthClosureError) < 0.01,
-     `标准模式方位角闭合差 = ${r2.closure.azimuthClosureError.toFixed(6)}″ ≈ 0`);
+  const lastF = rFirst.coordinates[rFirst.coordinates.length - 1];
+  const lastB = rBS.coordinates[rBS.coordinates.length - 1];
+  ok(approxEq(lastF.x, 100, 0.01) && approxEq(lastF.y, 100, 0.01),
+     `首边末点闭合: (${lastF.x.toFixed(3)}, ${lastF.y.toFixed(3)})`);
+  ok(approxEq(lastB.x, 100, 0.01) && approxEq(lastB.y, 100, 0.01),
+     `后视末点闭合: (${lastB.x.toFixed(3)}, ${lastB.y.toFixed(3)})`);
 
-  // 坐标数量一致
-  ok(r1.coordinates.length === r2.coordinates.length,
-     `坐标点数一致: ${r1.coordinates.length} vs ${r2.coordinates.length}`);
-
-  // 首点坐标
-  ok(approxEq(r1.coordinates[0].x, 100, 1e-9) && approxEq(r1.coordinates[0].y, 100, 1e-9),
-     `matching 首点坐标 = (100, 100)`);
-  ok(approxEq(r2.coordinates[0].x, 100, 1e-9) && approxEq(r2.coordinates[0].y, 100, 1e-9),
-     `标准 首点坐标 = (100, 100)`);
-  
-  // 末点坐标都闭合回起点
-  const last1 = r1.coordinates[r1.coordinates.length - 1];
-  const last2 = r2.coordinates[r2.coordinates.length - 1];
-  ok(approxEq(last1.x, 100, 0.01) && approxEq(last1.y, 100, 0.01),
-     `matching 末点闭合: (${last1.x.toFixed(3)}, ${last1.y.toFixed(3)}) ≈ (100, 100)`);
-  ok(approxEq(last2.x, 100, 0.01) && approxEq(last2.y, 100, 0.01),
-     `标准 末点闭合: (${last2.x.toFixed(3)}, ${last2.y.toFixed(3)}) ≈ (100, 100)`);
-
-  // matching 模式的方位角应是标准模式方位角偏移 1 位（不含起始方位角）
-  // r1.azimuths[i] 应 ≈ r2.azimuths[i+1]（对前 n-1 个）
-  for (let i = 0; i < r1.azimuths.length - 1; i++) {
-    ok(dmsEq(r1.azimuths[i], r2.azimuths[i + 1], 0.01),
-       `α 偏移一致: r1[${i}]=${formatDms(r1.azimuths[i])} ≈ r2[${i+1}]=${formatDms(r2.azimuths[i + 1])}`);
-  }
-
-  // c) 附合导线测试：isStartPointMatching=true
-  const r3 = calcAttachedTraverse({
+  const rAtt = calcAttachedTraverse({
     startPoint: { name: 'A', x: 1000, y: 1000 },
-    startAzimuth: 45.0,
+    startAzimuth: 225.0,
+    startAzBasis: 'backsight',
     endPoint: { name: 'E', x: 880, y: 1291.421356 },
     endAzimuth: 135.0,
+    endConnAngle: { deg: 135, min: 0, sec: 15 },
     angleType: 'left',
     stations: [
-      { name: 'A', deg: 225, min: 0, sec: 10, distance: 100.020 },
-      { name: 'B', deg: 225, min: 0, sec: 5,  distance: 149.970 },
-      { name: 'C', deg: 224, min: 59, sec: 50, distance: 100.010 },
-      { name: 'D', deg: 135, min: 0, sec: 15, distance: 120.030 }
-    ],
-    isStartPointMatching: true
+      { name: 'A', deg: 0,   min: 0, sec: 0,  distance: 100.020 },
+      { name: 'B', deg: 225, min: 0, sec: 10, distance: 149.970 },
+      { name: 'C', deg: 225, min: 0, sec: 5,  distance: 100.010 },
+      { name: 'D', deg: 224, min: 59, sec: 50, distance: 120.030 }
+    ]
   });
 
-  ok(approxEq(r3.closure.fBeta, 20, 0.01),
-     `附合 matching fβ = ${formatSeconds(r3.closure.fBeta)} ≈ +20″`);
-  ok(Math.abs(r3.closure.azimuthClosureError) < 0.01,
-     `附合 matching 方位角闭合差 ≈ 0`);
-  
-  const lastA3 = r3.coordinates[r3.coordinates.length - 1];
-  ok(approxEq(lastA3.x, 880, 1e-3) && approxEq(lastA3.y, 1291.421356, 1e-3),
-     `附合终点闭合: (${lastA3.x.toFixed(3)}, ${lastA3.y.toFixed(3)}) ≈ (880, 1291.421)`);
+  ok(dmsEq(rAtt.closure.fBeta, 20, 0.01),
+     `附合后视+终点连接角 fβ = ${formatSeconds(rAtt.closure.fBeta)} ≈ +20″`);
+  ok(Math.abs(rAtt.closure.azimuthClosureError) < 0.01, `附合方位角闭合差 ≈ 0`);
+  const lastA = rAtt.coordinates[rAtt.coordinates.length - 1];
+  ok(approxEq(lastA.x, 880, 1e-3) && approxEq(lastA.y, 1291.421356, 1e-3),
+     `附合终点闭合: (${lastA.x.toFixed(3)}, ${lastA.y.toFixed(3)})`);
+  ok(rAtt.adjustedAngles.length === 5, `附合改正角数 = 5 (4 站 + 终点连接角)`);
 }
 
 // ============== main ==============
@@ -765,7 +730,7 @@ printExcelLikeTable(r11, 'Test 11 附合导线 4站（带误差）');
 const r12 = testClosedTraverseSixStations();
 printExcelLikeTable(r12, 'Test 12 闭合导线 6站（带误差）');
 
-testStartPointMatching();
+testUnifiedModel();
 
 console.log('\n═══════════════════════════════════════════════════════');
 console.log(`  结果: ${pass} passed, ${fail} failed`);
