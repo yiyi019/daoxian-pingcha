@@ -17,19 +17,21 @@ import { STATE_VERSION } from './version.js';
 // ─────────────────────────────────────────────
 function defaultState() {
   return {
-    mode: 'closed',                  // 'closed' | 'attached'
+    mode: 'closed',
     startPoint: { name: 'A', x: 0, y: 0 },
     startAzimuth: { d: 0, m: 0, s: 0 },
-    startAzMode: 'dms',              // 'dms' | 'decimal'
+    startAzMode: 'dms',
     startAzDecimal: 0,
-    startBMode: false,               // true = 用两点反算
-    startB: null,                    // { name, x, y } | null
+    startAzBasis: 'backsight',
+    startBMode: false,
+    startB: null,
     endPoint: { name: 'E', x: 0, y: 0 },
     endAzimuth: { d: 0, m: 0, s: 0 },
     endAzMode: 'dms',
     endAzDecimal: 0,
-    endCMode: false,                 // true = 用 C→D 反算终止方位角
-    endC: null,                      // { name, x, y } | null
+    endCMode: false,
+    endC: null,
+    endConnAngle: { d: 180, m: 0, s: 0 },
     angleType: 'right',
     kLimit: 2000,
     integerMode: false,
@@ -41,6 +43,12 @@ function defaultState() {
       { name: 'D', deg: 90, min: 0, sec: 0, distance: 100 }
     ]
   };
+}
+
+function syncStartStationName() {
+  if (state.stations.length > 0) {
+    state.stations[0].name = state.startPoint.name || 'A';
+  }
 }
 
 function resolveStartAz() {
@@ -71,46 +79,39 @@ let currentProjectId = null;
 // ─────────────────────────────────────────────
 function recompute() {
   try {
-    let startAzDec = resolveStartAz();
-    let stationsList = JSON.parse(JSON.stringify(state.stations));
-    let convertedModel = false;
-
-    // 用户模型 -> 算法模型转换
-    // 如果首站名等于起算点名，说明用户给的 startAzimuth 是“后视方位角”，且角度对应的是测站本身
-    // 算法需要的是“第一条边方位角”，且角度对应边终点
-    if (stationsList.length >= 3 && stationsList[0].name.trim() && stationsList[0].name.trim() === state.startPoint.name.trim()) {
-      convertedModel = true;
-    }
+    syncStartStationName();
+    const stationsList = JSON.parse(JSON.stringify(state.stations));
+    // 坐标反算始终是后视方位角
+    const basis = state.startBMode
+      ? 'backsight'
+      : (state.startAzBasis === 'first' ? 'first' : 'backsight');
 
     const params = {
-      startPoint: state.startPoint,
-      startAzimuth: startAzDec,
+      startPoint: { ...state.startPoint },
+      startAzimuth: resolveStartAz(),
+      startAzBasis: basis,
       angleType: state.angleType,
       stations: stationsList,
       kLimit: 1 / state.kLimit,
       integerMode: state.integerMode,
-      roundedMode: state.roundedMode,
-      isStartPointMatching: convertedModel
+      roundedMode: state.roundedMode
     };
 
     if (state.mode === 'attached') {
-      params.endPoint = state.endPoint;
+      params.endPoint = { ...state.endPoint };
       params.endAzimuth = resolveEndAz();
+      params.endConnAngle = { ...state.endConnAngle };
       lastResult = calcAttachedTraverse(params);
     } else {
       lastResult = calcClosedTraverse(params);
     }
 
     if (lastResult) {
-      lastResult.convertedModel = convertedModel;
-      lastResult.originalStations = state.stations; // 保留原始用户输入供渲染表格用
-      lastResult.sourceMode = state.mode;           // 记录来源模式
+      lastResult.sourceMode = state.mode;
       lastResult.stationCount = state.stations.length;
-      if (convertedModel) {
-        lastResult.originalStartAz = resolveStartAz();
-      }
+      lastResult.startAzBasis = basis;
+      lastResult.originalStartAz = resolveStartAz();
     }
-
   } catch (e) {
     console.warn('计算失败:', e);
     lastResult = null;
@@ -391,6 +392,7 @@ function renderInputs() {
   $('#mode-attached').classList.toggle('active', state.mode === 'attached' && !isPlotter);
   $('#attached-end').hidden = state.mode !== 'attached';
 
+  syncStartStationName();
   $('#start-name').value = state.startPoint.name;
   $('#start-x').value = state.startPoint.x;
   $('#start-y').value = state.startPoint.y;
@@ -404,6 +406,17 @@ function renderInputs() {
   $('#start-az-decimal').hidden = isStartDms;
   $('#btn-toggle-start-decimal').classList.toggle('active', !isStartDms);
   $('#btn-toggle-start-decimal').textContent = isStartDms ? '⇄ 十进制' : '⇄ 度分秒';
+
+  const basis = state.startAzBasis === 'first' ? 'first' : 'backsight';
+  $$('input[name="start_az_basis"]').forEach(r => { r.checked = r.value === basis; });
+  const basisRow = $('#start-az-basis-row');
+  if (basisRow) basisRow.hidden = !!state.startBMode;
+  const startAzLabel = $('#start-az-label');
+  if (startAzLabel) {
+    startAzLabel.textContent = state.startBMode
+      ? '起始方位角（后视，反算）'
+      : (basis === 'first' ? '起始方位角（首边）' : '起始方位角（后视）');
+  }
 
   $('#start-manual-panel').hidden = state.startBMode;
   $('#start-reverse-panel').hidden = !state.startBMode;
@@ -461,6 +474,15 @@ function renderInputs() {
     ? formatDms(endCResolved)
     : `— (需填 ${endPName} 和 ${endCName} 坐标)`;
 
+  if (state.endConnAngle) {
+    const ecd = $('#end-conn-d');
+    const ecm = $('#end-conn-m');
+    const ecs = $('#end-conn-s');
+    if (ecd) ecd.value = state.endConnAngle.d;
+    if (ecm) ecm.value = state.endConnAngle.m;
+    if (ecs) ecs.value = state.endConnAngle.s;
+  }
+
   $('#k-limit-select').value = String(state.kLimit);
   $(`input[name="angle-type"][value="${state.angleType}"]`).checked = true;
   $('#integer-mode-toggle').checked = !!state.integerMode;
@@ -469,17 +491,28 @@ function renderInputs() {
   const n = state.stations.length;
   $('#fbeta-limit-hint').textContent = `自动: ±40″·√${n} = ±${(40 * Math.sqrt(n)).toFixed(1)}″`;
 
-  // 测站角度表（点号 + β，不含边长）
   const stationsBody = $('#stations-body');
   stationsBody.innerHTML = '';
   state.stations.forEach((s, i) => {
     const tr = el('tr');
+    const nameInput = el('input', {
+      type: 'text', value: s.name, maxlength: 4,
+      'data-i': i, 'data-f': 'name', class: 'cell-name'
+    });
+    if (i === 0) {
+      nameInput.readOnly = true;
+      nameInput.title = '首站固定为起点，请在「起点名」修改';
+      nameInput.classList.add('cell-name-locked');
+    }
+    const delBtn = i === 0
+      ? el('span', { class: 'btn-del-placeholder', title: '起点行不可删' }, '')
+      : el('button', { class: 'btn-del', 'data-i': i, title: '删除该行' }, '×');
     tr.append(
-      el('td', {}, el('input', { type: 'text', value: s.name, maxlength: 4, 'data-i': i, 'data-f': 'name', class: 'cell-name' })),
+      el('td', {}, nameInput),
       el('td', {}, el('input', { type: 'number', value: s.deg, 'data-i': i, 'data-f': 'deg', class: 'cell-dms', inputmode: 'numeric' })),
       el('td', {}, el('input', { type: 'number', value: s.min, 'data-i': i, 'data-f': 'min', class: 'cell-dms', inputmode: 'numeric' })),
       el('td', {}, el('input', { type: 'number', value: s.sec, step: '0.01', 'data-i': i, 'data-f': 'sec', class: 'cell-dms', inputmode: 'decimal' })),
-      el('td', { class: 'cell-actions' }, el('button', { class: 'btn-del', 'data-i': i, title: '删除该行' }, '×'))
+      el('td', { class: 'cell-actions' }, delBtn)
     );
     stationsBody.appendChild(tr);
   });
@@ -561,104 +594,64 @@ function renderResult() {
     $('#warning-bar').hidden = true;
   }
 
-  // 渲染交错表格
-  let currentStartAz = lastResult.convertedModel ? lastResult.originalStartAz : resolveStartAz();
+  const nSta = lastResult.increments.length;
+  const basis = lastResult.startAzBasis || 'backsight';
+  const startAzShow = lastResult.originalStartAz ?? resolveStartAz();
 
-  const isStartPointMatching = lastResult.convertedModel;
-
-  if (isStartPointMatching) {
-    // === 用户模型：首站就是起点 ===
-    
-    // 1. 渲染后视方位角边 (B -> A1)
-    const startBName = state.startBMode ? (state.startB?.name || '已知点') : '已知点';
+  if (basis === 'backsight' || state.startBMode) {
+    const startBName = state.startBMode
+      ? (state.startB?.name || '已知点')
+      : '后视';
     tbody.appendChild(buildResultRow({
       type: 'edge',
       name: `${startBName} → ${state.startPoint.name}`,
-      az: currentStartAz, dist: null, dx: null, dy: null, vx: null, vy: null, adjDx: null, adjDy: null
+      az: startAzShow, dist: null, dx: null, dy: null, vx: null, vy: null, adjDx: null, adjDy: null
     }));
+  }
 
-    for (let i = 0; i < lastResult.adjustedAngles.length; i++) {
-      const a = lastResult.adjustedAngles[i];
-      const inc = lastResult.increments[i];
-      const coord = lastResult.coordinates[i];
-      
-      // 渲染点 (i=0 时为 A1，并带上初始坐标)
-      tbody.appendChild(buildResultRow({
-        type: 'point',
-        name: a.name,
-        betaRaw: a.original, vBeta: a.correction, betaAdj: a.adjusted,
-        x: coord.x, y: coord.y
-      }));
+  for (let i = 0; i < nSta; i++) {
+    const a = lastResult.adjustedAngles[i];
+    const inc = lastResult.increments[i];
+    const coord = lastResult.coordinates[i];
 
-      // 渲染边
-      let edgeName = '';
-      if (i < lastResult.adjustedAngles.length - 1) {
-        edgeName = `${a.name} → ${lastResult.adjustedAngles[i+1].name}`;
-      } else {
-        edgeName = `${a.name} → ${state.mode === 'closed' ? state.startPoint.name : state.endPoint.name}`;
-      }
-      
-      tbody.appendChild(buildResultRow({
-        type: 'edge',
-        name: edgeName,
-        az: lastResult.azimuths[i],
-        dist: inc.distance, dx: inc.dx, dy: inc.dy, vx: inc.vx, vy: inc.vy, adjDx: inc.adjustedDx, adjDy: inc.adjustedDy
-      }));
-    }
-    
-    // 渲染闭合点
-    const lastCoord = lastResult.coordinates[lastResult.coordinates.length - 1];
     tbody.appendChild(buildResultRow({
       type: 'point',
-      name: state.mode === 'closed' ? state.startPoint.name : state.endPoint.name,
-      betaRaw: null, vBeta: null, betaAdj: null,
+      name: a.name,
+      betaRaw: a.original, vBeta: a.correction, betaAdj: a.adjusted,
+      x: coord.x, y: coord.y
+    }));
+
+    let edgeName;
+    if (i < nSta - 1) {
+      edgeName = `${a.name} → ${lastResult.adjustedAngles[i + 1].name}`;
+    } else {
+      edgeName = `${a.name} → ${state.mode === 'closed' ? state.startPoint.name : state.endPoint.name}`;
+    }
+    tbody.appendChild(buildResultRow({
+      type: 'edge',
+      name: edgeName,
+      az: lastResult.azimuths[i],
+      dist: inc.distance, dx: inc.dx, dy: inc.dy,
+      vx: inc.vx, vy: inc.vy, adjDx: inc.adjustedDx, adjDy: inc.adjustedDy
+    }));
+  }
+
+  const lastCoord = lastResult.coordinates[lastResult.coordinates.length - 1];
+  if (state.mode === 'attached' && lastResult.endConnAngle) {
+    const ec = lastResult.endConnAngle;
+    tbody.appendChild(buildResultRow({
+      type: 'point',
+      name: state.endPoint.name,
+      betaRaw: ec.original, vBeta: ec.correction, betaAdj: ec.adjusted,
       x: lastCoord.x, y: lastCoord.y
     }));
   } else {
-    // === 旧模型 / 附合导线模型 ===
-    
-    // 首站点行 (无观测角)
     tbody.appendChild(buildResultRow({
       type: 'point',
       name: state.startPoint.name,
-      betaRaw: null, betaAdj: null, vBeta: null,
-      x: state.startPoint.x, y: state.startPoint.y
+      betaRaw: null, vBeta: null, betaAdj: null,
+      x: lastCoord.x, y: lastCoord.y
     }));
-
-    if (state.mode === 'attached' && state.startBMode) {
-      tbody.appendChild(buildResultRow({
-        type: 'edge',
-        name: `${state.startB?.name || '已知点'} → ${state.startPoint.name}`,
-        az: currentStartAz, dist: null, dx: null, dy: null, vx: null, vy: null, adjDx: null, adjDy: null
-      }));
-    }
-
-    for (let i = 0; i < lastResult.adjustedAngles.length; i++) {
-      const a = lastResult.adjustedAngles[i];
-      const inc = lastResult.increments[i];
-      const coord = lastResult.coordinates[i + 1];
-
-      let edgeName = '';
-      if (i === 0) {
-        edgeName = `${state.startPoint.name} → ${a.name}`;
-      } else {
-        edgeName = `${lastResult.adjustedAngles[i-1].name} → ${a.name}`;
-      }
-
-      tbody.appendChild(buildResultRow({
-        type: 'edge',
-        name: edgeName,
-        az: lastResult.azimuths[i],
-        dist: inc.distance, dx: inc.dx, dy: inc.dy, vx: inc.vx, vy: inc.vy, adjDx: inc.adjustedDx, adjDy: inc.adjustedDy
-      }));
-
-      tbody.appendChild(buildResultRow({
-        type: 'point',
-        name: a.name,
-        betaRaw: a.original, vBeta: a.correction, betaAdj: a.adjusted,
-        x: coord.x, y: coord.y
-      }));
-    }
   }
 
   // Sum Row
@@ -706,18 +699,18 @@ function buildResultRow(r) {
   } else {
     const corrDec = state.integerMode ? 3 : 4;
     tr.append(
-      el('td', { class: 'col-name' }, ''), // name can optionally be placed here if wanted
+      el('td', { class: 'col-name edge-name' }, r.name || ''),
       el('td', { class: 'col-dms' }, ''),
       el('td', { class: 'col-num vbeta' }, ''),
       el('td', { class: 'col-dms' }, ''),
-      el('td', { class: 'col-dms' }, r.az === null ? '' : formatDms(r.az)),
-      el('td', { class: 'col-num' }, r.dist === null ? '' : r.dist.toFixed(3)),
-      el('td', { class: 'col-num small' }, r.dx === null ? '' : formatSigned(r.dx, 3)),
-      el('td', { class: 'col-num small' }, r.dy === null ? '' : formatSigned(r.dy, 3)),
-      el('td', { class: 'col-num small' }, r.vx === null ? '' : formatSigned(r.vx, corrDec)),
-      el('td', { class: 'col-num small' }, r.vy === null ? '' : formatSigned(r.vy, corrDec)),
-      el('td', { class: 'col-num' }, r.adjDx === null ? '' : formatSigned(r.adjDx, 3)),
-      el('td', { class: 'col-num' }, r.adjDy === null ? '' : formatSigned(r.adjDy, 3)),
+      el('td', { class: 'col-dms' }, r.az === null || r.az === undefined ? '' : formatDms(r.az)),
+      el('td', { class: 'col-num' }, r.dist === null || r.dist === undefined ? '' : r.dist.toFixed(3)),
+      el('td', { class: 'col-num small' }, r.dx === null || r.dx === undefined ? '' : formatSigned(r.dx, 3)),
+      el('td', { class: 'col-num small' }, r.dy === null || r.dy === undefined ? '' : formatSigned(r.dy, 3)),
+      el('td', { class: 'col-num small' }, r.vx === null || r.vx === undefined ? '' : formatSigned(r.vx, corrDec)),
+      el('td', { class: 'col-num small' }, r.vy === null || r.vy === undefined ? '' : formatSigned(r.vy, corrDec)),
+      el('td', { class: 'col-num' }, r.adjDx === null || r.adjDx === undefined ? '' : formatSigned(r.adjDx, 3)),
+      el('td', { class: 'col-num' }, r.adjDy === null || r.adjDy === undefined ? '' : formatSigned(r.adjDy, 3)),
       el('td', { class: 'col-num' }, ''),
       el('td', { class: 'col-num' }, '')
     );
@@ -730,6 +723,7 @@ function renderSketch() {
   if (!canvas) return;
   if (!lastResult || !lastResult.coordinates) {
     const ctx = canvas.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     return;
   }
@@ -737,6 +731,35 @@ function renderSketch() {
     isClosed: state.mode === 'closed',
     startName: state.startPoint.name
   });
+}
+
+function setupSketchAutoRedraw() {
+  const canvas = $('#sketch');
+  if (!canvas || canvas.dataset.resizeBound === '1') return;
+  canvas.dataset.resizeBound = '1';
+
+  let timer = null;
+  const schedule = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      renderSketch();
+      if (plotter && typeof plotter.render === 'function') {
+        try { plotter.render(); } catch (_) { /* ignore */ }
+      }
+    }, 40);
+  };
+
+  const target = canvas.parentElement || canvas;
+  if (typeof ResizeObserver !== 'undefined') {
+    const ro = new ResizeObserver(schedule);
+    ro.observe(target);
+    if (target !== canvas) ro.observe(canvas);
+  }
+  window.addEventListener('resize', schedule);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', schedule);
+    window.visualViewport.addEventListener('scroll', schedule);
+  }
 }
 
 function render() {
@@ -788,16 +811,27 @@ function renderDerived() {
 // 输入绑定
 // ─────────────────────────────────────────────
 function bindEvents() {
-  // 模式
-  $('#mode-closed').addEventListener('click', () => { state.mode = 'closed'; switchPage('calc'); render(); });
-  $('#mode-attached').addEventListener('click', () => { state.mode = 'attached'; switchPage('calc'); render(); });
+  $('#mode-closed').addEventListener('click', () => {
+    state.mode = 'closed';
+    switchPage('calc');
+    markDirty();
+    render();
+  });
+  $('#mode-attached').addEventListener('click', () => {
+    state.mode = 'attached';
+    switchPage('calc');
+    markDirty();
+    render();
+  });
 
-  // 细部绘图页面进入和退出
   $('#btn-open-plotter')?.addEventListener('click', () => { switchPage('plotter'); render(); });
   $('#btn-back-calc')?.addEventListener('click', () => { switchPage('calc'); render(); });
 
-  // 起算
-  $('#start-name').addEventListener('input', e => { state.startPoint.name = e.target.value; markDirty(); });
+  $('#start-name').addEventListener('input', e => {
+    state.startPoint.name = e.target.value;
+    syncStartStationName();
+    markDirty();
+  });
   $('#start-x').addEventListener('input', e => { state.startPoint.x = num(e.target.value); markDirty(); });
   $('#start-y').addEventListener('input', e => { state.startPoint.y = num(e.target.value); markDirty(); });
   bindDms('#start-az', () => state.startAzimuth);
@@ -827,8 +861,21 @@ function bindEvents() {
           y: state.startPoint.y - 100 * Math.sin(az * DEG)
         };
       }
+      if (state.startBMode) state.startAzBasis = 'backsight';
+      markDirty();
       render();
     });
+  });
+  $$('input[name="start_az_basis"]').forEach(r => {
+    r.addEventListener('change', e => {
+      state.startAzBasis = e.target.value === 'first' ? 'first' : 'backsight';
+      markDirty();
+      render();
+    });
+  });
+  bindDms('#end-conn', () => {
+    if (!state.endConnAngle) state.endConnAngle = { d: 0, m: 0, s: 0 };
+    return state.endConnAngle;
   });
   $('#start-b-name').addEventListener('input', e => {
     if (!state.startB) state.startB = { name: '', x: 0, y: 0 };
@@ -923,11 +970,20 @@ function bindEvents() {
   stationsBody.addEventListener('click', e => {
     if (e.target.classList.contains('btn-del')) {
       const i = num(e.target.dataset.i);
-      if (state.stations.length <= 3) {
-        alert('闭合导线至少需要 3 个测站');
+      if (i === 0) {
+        alert('起点行不可删除，请在「起点名」修改名称');
+        return;
+      }
+      const minN = state.mode === 'attached' ? 2 : 3;
+      if (state.stations.length <= minN) {
+        alert(state.mode === 'attached'
+          ? '附合导线至少需要 2 个测站（含起点）'
+          : '闭合导线至少需要 3 个测站');
         return;
       }
       state.stations.splice(i, 1);
+      syncStartStationName();
+      markDirty();
       render();
     }
   });
@@ -951,6 +1007,7 @@ function bindEvents() {
     const suffix = idx >= 26 ? String(Math.floor(idx / 26)) : '';
     const nextName = letter + suffix;
     state.stations.push({ name: nextName, deg: 0, min: 0, sec: 0, distance: last ? last.distance : 100 });
+    markDirty();
     render();
   });
 
@@ -997,8 +1054,13 @@ function bindEvents() {
     handleImportFile(e.target.files[0]);
   });
   $('#btn-import-confirm')?.addEventListener('click', () => {
-    if (tempImportedStations && tempImportedStations.length >= 3) {
+    const minN = state.mode === 'attached' ? 2 : 3;
+    if (tempImportedStations && tempImportedStations.length >= minN) {
       state.stations = tempImportedStations;
+      if (state.stations[0]?.name) {
+        state.startPoint.name = state.stations[0].name;
+      }
+      syncStartStationName();
       closeModals();
       markDirty();
       render();
@@ -1024,6 +1086,7 @@ function bindDms(prefix, getTarget) {
   const dEl = $(`${prefix}-d`);
   const mEl = $(`${prefix}-m`);
   const sEl = $(`${prefix}-s`);
+  if (!dEl || !mEl || !sEl) return;
   [dEl, mEl, sEl].forEach((e, i) => {
     const key = ['d', 'm', 's'][i];
     e.addEventListener('input', () => {
@@ -1403,8 +1466,12 @@ function validateImportData(stations) {
   if (!stations || stations.length === 0) {
     return { valid: false, error: '文件内未找到有效测站数据，请检查列数和格式！' };
   }
-  if (stations.length < 3) {
-    return { valid: false, error: `测站数量不足（仅有 ${stations.length} 个测站），导线平差至少需要 3 个测站！` };
+  const minN = state.mode === 'attached' ? 2 : 3;
+  if (stations.length < minN) {
+    return {
+      valid: false,
+      error: `测站数量不足（仅有 ${stations.length} 个），${state.mode === 'attached' ? '附合至少 2' : '闭合至少 3'} 个测站！`
+    };
   }
   
   for (let i = 0; i < stations.length; i++) {
@@ -1962,15 +2029,106 @@ function bindPlotterEvents() {
 }
 
 // ─────────────────────────────────────────────
+// 主题：light | dark | system
+// ─────────────────────────────────────────────
+const THEME_KEY = 'traverse-calc:theme';
+const THEME_ICONS = { light: '☀️', dark: '🌙', system: '💻' };
+
+function getThemePref() {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    if (v === 'light' || v === 'dark' || v === 'system') return v;
+  } catch (_) { /* ignore */ }
+  return 'system';
+}
+
+function resolveTheme(pref) {
+  if (pref === 'light' || pref === 'dark') return pref;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme(pref) {
+  const resolved = resolveTheme(pref);
+  document.documentElement.dataset.theme = resolved;
+  document.documentElement.dataset.themePref = pref;
+  try { localStorage.setItem(THEME_KEY, pref); } catch (_) { /* ignore */ }
+
+  const metaColor = document.getElementById('meta-theme-color');
+  if (metaColor) metaColor.setAttribute('content', resolved === 'dark' ? '#0b1220' : '#0f766e');
+  const metaBar = document.getElementById('meta-status-bar');
+  if (metaBar) metaBar.setAttribute('content', resolved === 'dark' ? 'black-translucent' : 'default');
+
+  const btn = $('#btn-theme');
+  if (btn) {
+    btn.textContent = THEME_ICONS[pref] || '🌓';
+    btn.title = pref === 'light' ? '主题：浅色' : (pref === 'dark' ? '主题：深色' : '主题：跟随系统');
+  }
+  $$('#theme-menu .theme-option').forEach(el => {
+    el.classList.toggle('active', el.dataset.themePref === pref);
+  });
+
+  // 画布颜色随主题刷新
+  try {
+    if (typeof renderSketch === 'function') renderSketch();
+    if (plotter) plotter.render();
+  } catch (_) { /* ignore early call */ }
+}
+
+function setThemeMenuOpen(open) {
+  const menu = $('#theme-menu');
+  const btn = $('#btn-theme');
+  if (!menu || !btn) return;
+  menu.hidden = !open;
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function bindThemeEvents() {
+  applyTheme(getThemePref());
+
+  const btn = $('#btn-theme');
+  const menu = $('#theme-menu');
+  if (!btn || !menu) return;
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setThemeMenuOpen(menu.hidden);
+  });
+  menu.addEventListener('click', (e) => {
+    const opt = e.target.closest('.theme-option');
+    if (!opt) return;
+    applyTheme(opt.dataset.themePref || 'system');
+    setThemeMenuOpen(false);
+  });
+  document.addEventListener('click', (e) => {
+    if (!menu.hidden && !e.target.closest('.theme-wrap')) setThemeMenuOpen(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') setThemeMenuOpen(false);
+  });
+
+  const mql = window.matchMedia('(prefers-color-scheme: dark)');
+  const onSystemChange = () => {
+    if (getThemePref() === 'system') applyTheme('system');
+  };
+  if (mql.addEventListener) mql.addEventListener('change', onSystemChange);
+  else if (mql.addListener) mql.addListener(onSystemChange);
+}
+
+// ─────────────────────────────────────────────
 // 启动
 // ─────────────────────────────────────────────
 function init() {
   const draft = loadDraft();
-  if (draft && draft.state && Array.isArray(draft.state.stations) && draft.state.stations.length >= 3) {
-    state = draft.state;
+  if (draft && draft.state && Array.isArray(draft.state.stations)) {
+    const minN = draft.state.mode === 'attached' ? 2 : 3;
+    if (draft.state.stations.length >= minN) {
+      state = draft.state;
+      syncStartStationName();
+    }
   }
+  bindThemeEvents();
   bindEvents();
-  // 首次主动算一次，让结果区先有内容
+  setupSketchAutoRedraw();
   runCompute();
 }
 
